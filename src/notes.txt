@@ -1,0 +1,25 @@
+Source
+- Name
+- Values
+
+Source1Wire : Source
+
+SourceBLE : Source
+
+
+Destination
+- ReportMetrics( Source, Values )
+
+DestinationCloudWatch : Destination
+
+DestinationMQTT : Destination
+
+
+
+Homer-Rusty
+- ReportMetrics(Source, Values)
+- List<Source> Sources
+- List<Channel> Destinations
+
+
+
