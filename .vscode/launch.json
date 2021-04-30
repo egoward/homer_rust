@@ -10,10 +10,11 @@
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/btle1.exe",
             "args": [],
-            "stopAtEntry": true,
+            "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
-            "console":  "externalTerminal"
+            "console": "internalConsole",
+            "preLaunchTask": "Rust: cargo build - btle1"
         }
     ]
 }
