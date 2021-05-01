@@ -54,18 +54,24 @@ fn main() {
         println!("Using config from {}", args.config_file);
     }
 
-    let file_result = std::fs::read_to_string(args.config_file);
-    let config_content = match file_result {
+    //let file_result = ;
+    let config_content = match std::fs::read_to_string(&args.config_file) {
         Ok(file) => file,
-        Err(error) => match error.kind() {
-            other_error => {
-                panic!("Problem opening the file: {:?}", other_error)
-            }
+        Err(error) => {
+            println!("Error opening file \"{}\"", &args.config_file);
+            panic!("Error : {:?}",error)
         },
     };
 
      //let config_content = fileResult.unwrap();
-     let config: ConfigMain = toml::from_str(&config_content).unwrap();
+     let config: ConfigMain = match toml::from_str(&config_content) {
+        Ok(config) => config,
+        Err(error) => {
+            println!("Error reading configuration file \"{}\"", &args.config_file);
+            panic!("Error : {:?}",error)
+        },
+     };
+
      if args.verbose {
         println!("Configuration : {:?}",config);
      }
