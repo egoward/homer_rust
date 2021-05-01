@@ -1,0 +1,5 @@
+title = "foo"
+
+[mqtt]
+server = "localhost"
+port = 1234
