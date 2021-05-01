@@ -1,8 +1,3 @@
-mod ble;
-mod mqtt;
-pub use ble::main_ble;
-pub use mqtt::main_mqtt;
-
 pub struct Metric {
     pub name: String,
     pub value: String,

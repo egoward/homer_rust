@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::thread;
 use std::str;
 
+
 pub fn main_mqtt() {
 
     let mut mqttoptions = MqttOptions::new("rumqtt-sync", "house", 1883);

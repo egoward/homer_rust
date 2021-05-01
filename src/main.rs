@@ -1,20 +1,27 @@
-use btle1;
+mod ble;
+mod mqtt;
+mod homer_relay;
+
+use homer_relay::homer_core::*;
 
 fn main() {
     println!("This is main");
     //btle1::test_some_local_function();
 
-    let manager = btle1::MetricManager {
+    let manager = MetricManager {
         sources : vec! {
-            Box::new( btle1::MetricSourceTest {} )
+            Box::new( MetricSourceTest {} )
         },
         destinations : vec! {
-            Box::new( btle1::MetricDestinationLog {} )
+            Box::new( MetricDestinationLog {} ),
+            //Box::new( btle1::MetricDestinationMQTT {} )
         }
     };
 
     manager.run();
 
-    btle1::main_mqtt();
+    mqtt::main_mqtt();
 
+    //ble::main_ble();
+    
 }

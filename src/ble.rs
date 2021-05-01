@@ -38,6 +38,7 @@ If you are getting run time error like that :
  you can try to run app with > sudo ./discover_adapters_peripherals
  on linux
 **/
+#[allow(dead_code)]
 pub fn main_ble() {
     SimpleLogger::new().init().unwrap();
     let manager = Manager::new().unwrap();
