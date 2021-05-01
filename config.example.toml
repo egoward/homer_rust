@@ -2,4 +2,4 @@ title = "foo"
 
 [mqtt]
 server = "localhost"
-port = 1234
+port = 1883

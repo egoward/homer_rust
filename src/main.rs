@@ -1,5 +1,4 @@
 mod ble;
-mod mqtt;
 mod homer_relay;
 
 use structopt::StructOpt;
@@ -38,29 +37,19 @@ struct CommandLine {
     cmd: Command
 }
 
-
-
-
 #[derive(Deserialize,Serialize,Debug)]
 struct ConfigMain {
     title: String,
     mqtt: ConfigMQTT,
 }
 
-#[derive(Deserialize,Serialize,Debug)]
-struct ConfigMQTT {
-    server: String,
-    #[serde(default)]
-    port: u32
-
-}
 
 fn main() {
 
     let args = CommandLine::from_args();
 
     if args.verbose {
-        println!("Verbose mode!")
+        println!("Verbose mode!");
         println!("Arguments : {:?}",args);
         println!("Using config from {}", args.config_file);
     }
@@ -83,7 +72,8 @@ fn main() {
 
     match &args.cmd {
         Command::TestMQTT {} => {
-            mqtt::main_mqtt();
+            config.mqtt.test();
+            //mqtt::main_mqtt();
         }
         Command::TestBLE { device: _ } => {
             ble::main_ble();
@@ -91,10 +81,7 @@ fn main() {
         Command::WriteExampleConfig {} => {
             let example_config = ConfigMain {
                 title : "foo".to_string(),
-                mqtt : ConfigMQTT {
-                    server: "localhost".to_string(),
-                    port: 1234
-                }
+                mqtt : ConfigMQTT::example()
             };
             let test_output : String = toml::to_string(&example_config).unwrap();
             let filename = "config.example.toml";
