@@ -2,7 +2,8 @@ mod ble;
 mod mqtt;
 mod homer_relay;
 
-use homer_relay::homer_core::*;
+use homer_relay::core::*;
+use homer_relay::mqtt::*;
 
 fn main() {
     println!("This is main");
@@ -14,7 +15,7 @@ fn main() {
         },
         destinations : vec! {
             Box::new( MetricDestinationLog {} ),
-            //Box::new( btle1::MetricDestinationMQTT {} )
+            Box::new( MetricDestinationMQTT {} )
         }
     };
 

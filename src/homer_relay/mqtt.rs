@@ -1,7 +1,6 @@
-pub use super::homer_core::*;
+pub use super::core::*;
 
 pub struct MetricDestinationMQTT {}
-
 
 impl MetricDestination for MetricDestinationMQTT {
     fn name(&self) -> String {
