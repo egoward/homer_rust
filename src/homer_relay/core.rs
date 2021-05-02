@@ -1,19 +1,40 @@
+use serde::{Serialize, Deserialize};
+
 pub struct Metric {
     pub name: String,
     pub value: String,
 }
 
-pub trait MetricDestination {
+#[typetag::serde(tag = "type")]
+pub trait DestinationConfig {
     fn name(&self) -> String;
+    fn init(self : Box<Self>) -> Box<dyn Destination>;
+}
+
+pub trait Destination {
+    fn test(&self) -> () {
+        println!("No tests applicable");
+    }
     fn report(&self, metrics: &Vec<Metric>) -> ();
 }
 
-pub struct MetricDestinationLog {}
 
-impl MetricDestination for MetricDestinationLog {
+#[derive(Deserialize,Serialize)]
+pub struct DestinationLogConfig {}
+
+pub struct DestinationLog {}
+
+#[typetag::serde(name = "log")]
+impl DestinationConfig for DestinationLogConfig {
     fn name(&self) -> String {
         return String::from("MetricDestinationLog");
     }
+    fn init(self : Box<Self>) -> Box<dyn Destination> {
+        return Box::new( DestinationLog{} )
+    }
+}
+
+impl Destination for DestinationLog {
     fn report(&self, metrics: &Vec<Metric>) {
         for metric in metrics {
             println!("Metric {} has value {}", metric.name, metric.value);
@@ -21,41 +42,45 @@ impl MetricDestination for MetricDestinationLog {
     }
 }
 
-pub trait MetricSource {
-    fn name(&self) -> String;
-    fn poll(&self) -> Vec<Metric>;
+
+
+#[derive(Deserialize,Serialize)]
+pub struct Config {
+    pub destinations : Vec<Box<dyn DestinationConfig>>,
 }
 
-pub struct MetricSourceTest {}
+pub struct Manager {
+    pub destinations : Vec<Box<dyn Destination>> 
+}
 
-impl MetricSource for MetricSourceTest {
-    fn name(&self) -> String {
-        return String::from("MetricSourceTest");
+impl Manager {
+    pub fn create( config : Config ) -> Manager {
+        let mut manager = Manager {
+            destinations: vec![]
+        };
+        for destination in config.destinations {
+            manager.destinations.push(destination.init())
+        }
+        return manager;
     }
-    fn poll(&self) -> Vec<Metric> {
-        return vec![Metric {
+
+    pub fn test(&self) {
+        println!("Running metric manager");
+        //for source in &self.sources {
+            //println!("Checking {}", source.name());
+            //let metrics = source.poll();
+        let metrics = vec![Metric {
             name: String::from("TestMetric"),
             value: String::from("1.0"),
         }];
-    }
-}
-
-
-pub struct MetricManager {
-    pub destinations : Vec<Box<dyn MetricDestination>>,
-    pub sources : Vec<Box<dyn MetricSource>>,
-}
-
-impl MetricManager {
-    pub fn run(&self) {
-        println!("Running metric manager");
-        for source in &self.sources {
-            println!("Checking {}", source.name());
-            let metrics = source.poll();
-            for destination in &self.destinations {
-                println!("Sending to {}", destination.name());
-                destination.report( &metrics );
-            }
+        for destination in &self.destinations {
+            //println!("Sending to {}", destination.name());
+            destination.report( &metrics );
         }
-    }
+    }       
+
+    pub fn run(&self) {
+
+    }    
 }
+
