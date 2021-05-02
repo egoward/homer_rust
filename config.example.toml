@@ -6,3 +6,4 @@ type = "mqtt"
 server = "localhost"
 port = 123
 agent_name = "MessageRelayAgent"
+publish_channel = "/MetricRelay/"

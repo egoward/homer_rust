@@ -83,7 +83,7 @@ fn main() {
 
     match &args.cmd {
         Command::TestSend {} => {
-            let manager = Manager::create( config );
+            let mut manager = Manager::create( config );
             manager.test();
         }
         Command::TestBLE {} => {
