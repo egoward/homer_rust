@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/btle1.exe",
-            "args": ["write-example-config"],
+            "args": ["test-send"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
