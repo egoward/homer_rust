@@ -6,6 +6,3 @@ type = "mqtt"
 server = "localhost"
 port = 123
 agent_name = "MessageRelayAgent"
-
-[[sources]]
-type = "MetricSourceTest"

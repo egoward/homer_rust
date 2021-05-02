@@ -1,4 +1,4 @@
-use rumqttc::{MqttOptions, Client, Connection, QoS, Event, Packet};
+use rumqttc::{MqttOptions, Client,  QoS, Event, Packet};
 use std::time::Duration;
 use std::thread;
 use std::str;
@@ -28,7 +28,7 @@ impl DestinationConfig for DestinationMQTTConfig {
         return String::from("MetricDestinationMQTT");
     }
 
-    fn init(&self) -> Box<dyn Destination> {
+    fn init(self : Box<Self> ) -> Box<dyn Destination> {
         return Box::new( DestinationMQTT{} )
     }
 }

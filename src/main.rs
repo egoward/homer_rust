@@ -10,8 +10,8 @@ use homer_relay::mqtt::*;
 #[derive(Debug,StructOpt)]
 #[structopt(about = "The stupid message relay")]
 enum Command {
-    #[structopt(about = "Test configured destinations")]
-    TestDestination {
+    #[structopt(about = "Test sending to destinations")]
+    TestSend {
     },
     #[structopt(about = "Test Bluetooth Low Energy")]
     TestBLE {
@@ -34,19 +34,16 @@ struct CommandLine {
     cmd: Command
 }
 
-fn writeExampleConfig() {
-    let manager = MetricManager {
-        sources : vec! {
-            Box::new( MetricSourceTest {} )
-        },
+fn write_example_config() {
+    let config = Config {
         destinations : vec! {
             Box::new( DestinationLogConfig {} ),
-            Box::new( DestinationMQTTConfig {server:"localhost".to_string(),port:123, agent_name:"MessageRelayAgent".to_string()} ),
+            Box::new( DestinationMQTTConfig::example_config()),
         }
     };
 
 
-    let test_output : String = toml::to_string(&manager).unwrap();
+    let test_output : String = toml::to_string(&config).unwrap();
     let filename = "config.example.toml";
     println!("Writing example configuration to {}", filename);
     std::fs::write(filename, test_output).unwrap();
@@ -70,11 +67,11 @@ fn main() {
         },
     };
 
-     let manager: MetricManager = match toml::from_str(&config_content) {
+     let config: Config = match toml::from_str(&config_content) {
         Ok(m) => m,
         Err(error) => {
             println!("Error reading configuration file \"{}\"", &args.config_file);
-            writeExampleConfig();            
+            write_example_config();            
             panic!("Error : {:?}",error)
         },
      };
@@ -85,23 +82,19 @@ fn main() {
      }
 
     match &args.cmd {
-        Command::TestDestination {} => {
-            manager.init();
-            for destination in manager.destinations {
-                println!("Testing {}", destination.name());
-                let x = destination.init();
-                x.test();
-            }
+        Command::TestSend {} => {
+            let manager = Manager::create( config );
+            manager.test();
         }
         Command::TestBLE {} => {
             ble::main_ble();
         }
         Command::WriteExampleConfig {} => {
-            writeExampleConfig();
+            write_example_config();
         }
 
         Command::Run {} => {
-            manager.init();
+            let manager = Manager::create( config );
             manager.run();
         }
 
