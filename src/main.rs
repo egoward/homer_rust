@@ -2,6 +2,8 @@ mod ble;
 mod homer_relay;
 
 use structopt::StructOpt;
+use std::thread;
+use std::time::Duration;
 
 // use homer_relay::core::*;
 use homer_relay::mqtt::*;
@@ -81,10 +83,19 @@ fn main() {
         // println!("Configuration : {:?}",metricManager);
      }
 
+    ctrlc::set_handler(move || {
+        println!("received Ctrl+C!");
+    }).unwrap();
+
     match &args.cmd {
         Command::TestSend {} => {
             let mut manager = Manager::create( config );
             manager.test();
+            manager.shutdown();
+            println!("Waiting for 5 seconds");
+            thread::sleep(Duration::from_millis(5000));
+            println!("Done");
+
         }
         Command::TestBLE {} => {
             ble::main_ble();

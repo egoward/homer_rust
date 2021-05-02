@@ -12,10 +12,15 @@ pub trait DestinationConfig {
 }
 
 pub trait Destination {
-    fn test(&mut self) -> () {
-        println!("No tests applicable");
-    }
+    fn name(&self) -> String;
     fn report(&mut self, metrics: &Vec<Metric>) -> ();
+
+    fn test(&mut self) -> () {
+        println!("{} : No tests applicable", self.name());
+    }
+    fn shutdown(&mut self) -> () {
+        println!("{} : No shutdown logic", self.name());
+    }
 }
 
 
@@ -35,6 +40,9 @@ impl DestinationConfig for DestinationLogConfig {
 }
 
 impl Destination for DestinationLog {
+    fn name(&self) -> String { 
+        return "DestinationLog".to_string() 
+    }
     fn report(&mut self, metrics: &Vec<Metric>) {
         for metric in metrics {
             println!("Metric {} has value {}", metric.name, metric.value);
@@ -60,6 +68,7 @@ impl Manager {
         };
         for destination in config.destinations {
             manager.destinations.push(destination.init())
+
         }
         return manager;
     }
@@ -74,13 +83,20 @@ impl Manager {
             value: String::from("1.0"),
         }];
         for destination in &mut self.destinations {
-            //println!("Sending to {}", destination.name());
+            println!("Sending to {}", destination.name());
             destination.report( &metrics );
-        }
+        }        
     }       
 
     pub fn run(&self) {
 
-    }    
+    }
+
+    pub fn shutdown(&mut self) {
+        println!("Shutting down");
+        for destination in &mut self.destinations {
+            destination.shutdown();
+        }
+    }
 }
 

@@ -1,4 +1,4 @@
-use rumqttc::{MqttOptions, Client, QoS, Event, Packet};
+use rumqttc::{MqttOptions, Client, QoS, Event, Packet, Outgoing};
 use std::time::Duration;
 use std::thread;
 use std::str;
@@ -19,7 +19,7 @@ pub struct DestinationMQTTConfig {
 
 impl DestinationMQTTConfig {
     pub fn example_config()->DestinationMQTTConfig {
-        return DestinationMQTTConfig {server:"localhost".to_string(),port:123, agent_name:"MessageRelayAgent".to_string(), publish_channel: "/MetricRelay/".to_string()}
+        return DestinationMQTTConfig {server:"localhost".to_string(),port:1883, agent_name:"MessageRelayAgent".to_string(), publish_channel: "/MetricRelay/".to_string()}
     }
 }
 
@@ -41,8 +41,53 @@ impl DestinationConfig for DestinationMQTTConfig {
             println!("Polling for stuff");
             // Iterate to poll the eventloop for connection progress
             for (i, notification) in connection.iter().enumerate() {
-                println!("Notification = {} {:?}", i, notification);
-                let msg = notification.unwrap();
+                match notification {
+                    Ok(msg)  => {
+                        println!("Notification = {} [{:?}]", i, msg);
+                        match &msg {
+                            Event::Incoming(incoming_msg) => {
+                                match &incoming_msg {
+                                     Packet::Publish(packet) => {
+                                        let msg_string = str::from_utf8(&packet.payload).unwrap();
+                                        println!("packet = {}", msg_string);
+                
+                                        //println!("Publish message");
+                                    }
+                                    Packet::PubAck(_publish_message) => {
+                                        println!("Publish ack");
+                                    }
+                                    Packet::PingResp => {
+                                        println!("PingResp");
+                                    }
+                                    _ => {
+                                        println!("Something else");
+                                    }
+        
+                                }
+                                //println!("Incoming message");
+                                
+                            }
+                            Event::Outgoing(outgoing_msg) => {
+                                match &outgoing_msg {
+                                    Outgoing::Disconnect => {
+                                        println!("Publish message");
+                                    }
+                                    _ => {
+                                        println!("Some outgoing message");
+                                    }
+                                }
+                                //println!("Outgoing message");
+                            }
+        
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error {:?}",e)
+
+                    }
+                }
+
+                /*
                 if let Event::Incoming(incoming_msg) = msg {
                     if let Packet::Publish(packet) = incoming_msg {
                         let msg_string = str::from_utf8(&packet.payload).unwrap();
@@ -50,8 +95,11 @@ impl DestinationConfig for DestinationMQTTConfig {
                         if msg_string == "Hello 9" {
                             break;
                         }
-                    }
+                    } 
+                } else {
+                    println!("Not an incoming message");
                 }
+                */
             }
             println!("Done???");
 
@@ -68,16 +116,30 @@ impl DestinationConfig for DestinationMQTTConfig {
 
 
 pub struct DestinationMQTT {
-    #[allow(dead_code)]
     config : Box<DestinationMQTTConfig>,
-    #[allow(dead_code)]
     client : Client,
     #[allow(dead_code)]
     poller : std::thread::JoinHandle<()>,
 
 }
 
+impl Drop for DestinationMQTT {
+    fn drop(&mut self) {
+        println!("Dropping DestinationMQTT");
+        self.client.disconnect().unwrap();
+        //self.poller.join().unwrap();
+        //drop self.poller;
+        println!("Dropped DestinationMQTT");
+
+    }
+
+}
+
 impl Destination for DestinationMQTT {
+    fn name(&self) -> String { 
+        return format!("DestinationMQTT {}:{}", self.config.server, self.config.port);
+    }
+
     fn test(&mut self) {
         let mut mqttoptions = MqttOptions::new("mqtt-agent", "house", 1883);
         mqttoptions.set_keep_alive(5);
@@ -130,6 +192,13 @@ impl Destination for DestinationMQTT {
             thread::sleep(Duration::from_millis(100));
 
         }
+    }
+
+    fn shutdown(&mut self) -> () {
+        println!("Disconnecting");
+        self.client.disconnect().unwrap();
+        //self.poller.join().unwrap();
+        return;
     }
 }
 

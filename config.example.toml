@@ -4,6 +4,6 @@ type = "log"
 [[destinations]]
 type = "mqtt"
 server = "localhost"
-port = 123
+port = 1883
 agent_name = "MessageRelayAgent"
 publish_channel = "/MetricRelay/"
