@@ -1,5 +1,11 @@
-title = "foo"
+[[destinations]]
+type = "log"
 
-[mqtt]
+[[destinations]]
+type = "mqtt"
 server = "localhost"
-port = 1883
+port = 123
+agent_name = "MessageRelayAgent"
+
+[[sources]]
+type = "MetricSourceTest"

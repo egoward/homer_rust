@@ -2,21 +2,19 @@ mod ble;
 mod homer_relay;
 
 use structopt::StructOpt;
-use serde::{Serialize, Deserialize};
 
-use homer_relay::core::*;
+// use homer_relay::core::*;
 use homer_relay::mqtt::*;
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Debug,StructOpt)]
 #[structopt(about = "The stupid message relay")]
 enum Command {
-    #[structopt(about = "Test some BLE functionality")]
-    TestBLE {
-        device : String
+    #[structopt(about = "Test configured destinations")]
+    TestDestination {
     },
-    #[structopt(about = "Test some MQTT functionality")]
-    TestMQTT {
+    #[structopt(about = "Test Bluetooth Low Energy")]
+    TestBLE {
     },
     #[structopt(about = "Run the thing")]
     Run {
@@ -30,22 +28,32 @@ enum Command {
 struct CommandLine {
     #[structopt(name = "config", default_value = "config.toml", long = "config")]
     config_file: String,
-    //#[structopt(name = "v", long = "verbose")]
     #[structopt(name = "v", long = "verbose")]
     verbose: bool,
-    #[structopt(subcommand)]  // Note that we mark a field as a subcommand
+    #[structopt(subcommand)]
     cmd: Command
 }
 
-#[derive(Deserialize,Serialize,Debug)]
-struct ConfigMain {
-    title: String,
-    mqtt: ConfigMQTT,
+fn writeExampleConfig() {
+    let manager = MetricManager {
+        sources : vec! {
+            Box::new( MetricSourceTest {} )
+        },
+        destinations : vec! {
+            Box::new( DestinationLogConfig {} ),
+            Box::new( DestinationMQTTConfig {server:"localhost".to_string(),port:123, agent_name:"MessageRelayAgent".to_string()} ),
+        }
+    };
+
+
+    let test_output : String = toml::to_string(&manager).unwrap();
+    let filename = "config.example.toml";
+    println!("Writing example configuration to {}", filename);
+    std::fs::write(filename, test_output).unwrap();
 }
 
 
 fn main() {
-
     let args = CommandLine::from_args();
 
     if args.verbose {
@@ -54,7 +62,6 @@ fn main() {
         println!("Using config from {}", args.config_file);
     }
 
-    //let file_result = ;
     let config_content = match std::fs::read_to_string(&args.config_file) {
         Ok(file) => file,
         Err(error) => {
@@ -63,50 +70,38 @@ fn main() {
         },
     };
 
-     //let config_content = fileResult.unwrap();
-     let config: ConfigMain = match toml::from_str(&config_content) {
-        Ok(config) => config,
+     let manager: MetricManager = match toml::from_str(&config_content) {
+        Ok(m) => m,
         Err(error) => {
             println!("Error reading configuration file \"{}\"", &args.config_file);
+            writeExampleConfig();            
             panic!("Error : {:?}",error)
         },
      };
 
      if args.verbose {
-        println!("Configuration : {:?}",config);
+        // We can't Debug our metric manager now
+        // println!("Configuration : {:?}",metricManager);
      }
 
     match &args.cmd {
-        Command::TestMQTT {} => {
-            config.mqtt.test();
-            //mqtt::main_mqtt();
+        Command::TestDestination {} => {
+            manager.init();
+            for destination in manager.destinations {
+                println!("Testing {}", destination.name());
+                let x = destination.init();
+                x.test();
+            }
         }
-        Command::TestBLE { device: _ } => {
+        Command::TestBLE {} => {
             ble::main_ble();
         }
         Command::WriteExampleConfig {} => {
-            let example_config = ConfigMain {
-                title : "foo".to_string(),
-                mqtt : ConfigMQTT::example()
-            };
-            let test_output : String = toml::to_string(&example_config).unwrap();
-            let filename = "config.example.toml";
-            println!("Writing example configuration to {}", filename);
-            std::fs::write(filename, test_output).unwrap();
+            writeExampleConfig();
         }
 
         Command::Run {} => {
-
-            let manager = MetricManager {
-                sources : vec! {
-                    Box::new( MetricSourceTest {} )
-                },
-                destinations : vec! {
-                    Box::new( MetricDestinationLog {} ),
-                    Box::new( MetricDestinationMQTT {} )
-                }
-            };
-        
+            manager.init();
             manager.run();
         }
 
