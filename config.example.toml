@@ -15,7 +15,11 @@ region = "eu-west-2"
 profile = "edonica"
 
 [[sources]]
-type = "log"
+type = "constant"
 object = "TestObject"
 property = "Temperature"
 value = 2.34
+
+[[sources]]
+type = "ble"
+id = "123"

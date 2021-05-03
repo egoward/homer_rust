@@ -5,3 +5,4 @@ pub mod mqtt;
 pub mod cloudwatch;
 
 pub mod constant;
+pub mod bluetooth;
