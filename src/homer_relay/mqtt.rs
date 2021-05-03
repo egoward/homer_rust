@@ -70,7 +70,8 @@ impl DestinationConfig for DestinationMQTTConfig {
                             Event::Outgoing(outgoing_msg) => {
                                 match &outgoing_msg {
                                     Outgoing::Disconnect => {
-                                        println!("Publish message");
+                                        println!("Disconnected, closing thread");
+                                        break;
                                     }
                                     _ => {
                                         println!("Some outgoing message");
@@ -101,7 +102,7 @@ impl DestinationConfig for DestinationMQTTConfig {
                 }
                 */
             }
-            println!("Done???");
+            println!("Polling thread exiting");
 
         });    
 
@@ -126,11 +127,10 @@ pub struct DestinationMQTT {
 impl Drop for DestinationMQTT {
     fn drop(&mut self) {
         println!("Dropping DestinationMQTT");
-        self.client.disconnect().unwrap();
+        //self.client.disconnect().unwrap();
         //self.poller.join().unwrap();
         //drop self.poller;
         println!("Dropped DestinationMQTT");
-
     }
 
 }
@@ -194,11 +194,11 @@ impl Destination for DestinationMQTT {
         }
     }
 
-    fn shutdown(&mut self) -> () {
+    fn shutdown(&mut self) -> Option<&mut std::thread::JoinHandle<()>> {
         println!("Disconnecting");
         self.client.disconnect().unwrap();
         //self.poller.join().unwrap();
-        return;
+        return Some(&mut self.poller);
     }
 }
 

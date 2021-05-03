@@ -18,8 +18,9 @@ pub trait Destination {
     fn test(&mut self) -> () {
         println!("{} : No tests applicable", self.name());
     }
-    fn shutdown(&mut self) -> () {
+    fn shutdown(&mut self) -> Option<&mut std::thread::JoinHandle<()>> {
         println!("{} : No shutdown logic", self.name());
+        return Option::None;
     }
 }
 
@@ -92,10 +93,21 @@ impl Manager {
 
     }
 
-    pub fn shutdown(&mut self) {
+    pub fn shutdown(mut self) {
         println!("Shutting down");
         for destination in &mut self.destinations {
-            destination.shutdown();
+            let x = destination.shutdown();
+            let y = x.unwrap();
+            let q = y.join();
+            
+
+            /*println!("Shutdown to {}", destination.name());
+            match x {
+                Some(&_thread) => {
+                    &_thread.join().unwrap();
+
+                }
+            }*/
         }
     }
 }
