@@ -92,8 +92,8 @@ fn main() {
             let mut manager = Manager::create( config );
             manager.test();
             manager.shutdown();
-            println!("Waiting for 5 seconds");
-            thread::sleep(Duration::from_millis(5000));
+            println!("Waiting for a second in case there's stuff in the background");
+            thread::sleep(Duration::from_millis(1000));
             println!("Done");
 
         }

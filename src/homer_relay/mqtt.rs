@@ -31,85 +31,64 @@ impl DestinationConfig for DestinationMQTTConfig {
 
     fn init(self : Box<Self> ) -> Box<dyn Destination> {
 
-        let mut mqttoptions = MqttOptions::new("mqtt-agent", "house", 1883);
+        let mut mqttoptions = MqttOptions::new( self.agent_name.clone(), self.server.clone(), self.port);
         mqttoptions.set_keep_alive(5);
 
         let (client, mut connection) = Client::new(mqttoptions, 10);
 
+
+        let name = format!("mqtt {}:{}", self.server, self.port);
+        let n = name.clone();
+
         //The connection belongs to the thread...
         let poller = thread::spawn( move || {
-            println!("Polling for stuff");
-            // Iterate to poll the eventloop for connection progress
-            for (i, notification) in connection.iter().enumerate() {
+            println!("{} : Poller thread started", n);
+            for (_, notification) in connection.iter().enumerate() {
                 match notification {
                     Ok(msg)  => {
-                        println!("Notification = {} [{:?}]", i, msg);
                         match &msg {
                             Event::Incoming(incoming_msg) => {
                                 match &incoming_msg {
                                      Packet::Publish(packet) => {
                                         let msg_string = str::from_utf8(&packet.payload).unwrap();
-                                        println!("packet = {}", msg_string);
-                
-                                        //println!("Publish message");
+                                        println!("{} : Packet = {}", n, msg_string);
                                     }
                                     Packet::PubAck(_publish_message) => {
-                                        println!("Publish ack");
-                                    }
-                                    Packet::PingResp => {
-                                        println!("PingResp");
+                                        println!("{} Published",n);
                                     }
                                     _ => {
-                                        println!("Something else");
+                                        println!("{} In:{:?}", n, incoming_msg);
                                     }
         
                                 }
-                                //println!("Incoming message");
-                                
                             }
                             Event::Outgoing(outgoing_msg) => {
                                 match &outgoing_msg {
                                     Outgoing::Disconnect => {
-                                        println!("Disconnected, closing thread");
+                                        println!("{} Got disconnect", n);
                                         break;
                                     }
                                     _ => {
-                                        println!("Some outgoing message");
+                                        println!("{} Out:{:?}", n, outgoing_msg);
                                     }
                                 }
-                                //println!("Outgoing message");
                             }
         
                         }
                     }
                     Err(e) => {
-                        println!("Error {:?}",e)
-
+                        println!("{} Error:{:?}", n, e);
                     }
                 }
-
-                /*
-                if let Event::Incoming(incoming_msg) = msg {
-                    if let Packet::Publish(packet) = incoming_msg {
-                        let msg_string = str::from_utf8(&packet.payload).unwrap();
-                        println!("packet = {}", msg_string);
-                        if msg_string == "Hello 9" {
-                            break;
-                        }
-                    } 
-                } else {
-                    println!("Not an incoming message");
-                }
-                */
             }
-            println!("Polling thread exiting");
-
+            println!("{} Poll thread exiting", n );
         });    
 
         return Box::new( DestinationMQTT{
             config : self,
-            client : client,
-            poller: poller
+            name,
+            client,
+            poller: Some(poller)
         } )
 
     }
@@ -117,88 +96,38 @@ impl DestinationConfig for DestinationMQTTConfig {
 
 
 pub struct DestinationMQTT {
+    name: String,
     config : Box<DestinationMQTTConfig>,
     client : Client,
-    #[allow(dead_code)]
-    poller : std::thread::JoinHandle<()>,
-
-}
-
-impl Drop for DestinationMQTT {
-    fn drop(&mut self) {
-        println!("Dropping DestinationMQTT");
-        //self.client.disconnect().unwrap();
-        //self.poller.join().unwrap();
-        //drop self.poller;
-        println!("Dropped DestinationMQTT");
-    }
+    poller : Option<std::thread::JoinHandle<()>>,
 
 }
 
 impl Destination for DestinationMQTT {
-    fn name(&self) -> String { 
-        return format!("DestinationMQTT {}:{}", self.config.server, self.config.port);
+    fn name(&self) -> &String { 
+        return &self.name;
     }
 
-    fn test(&mut self) {
-        let mut mqttoptions = MqttOptions::new("mqtt-agent", "house", 1883);
-        mqttoptions.set_keep_alive(5);
-        
-        println!("Doing subscribe");
-        let (mut client, mut connection) = Client::new(mqttoptions, 10);
-        client.subscribe("hello/rumqtt", QoS::AtMostOnce).unwrap();
-    
-        let poller = thread::spawn( move || {
-            println!("Polling for stuff");
-            // Iterate to poll the eventloop for connection progress
-            for (i, notification) in connection.iter().enumerate() {
-                println!("Notification = {} {:?}", i, notification);
-                let msg = notification.unwrap();
-                if let Event::Incoming(incoming_msg) = msg {
-                    if let Packet::Publish(packet) = incoming_msg {
-                        let msg_string = str::from_utf8(&packet.payload).unwrap();
-                        println!("packet = {}", msg_string);
-                        if msg_string == "Hello 9" {
-                            break;
-                        }
-                    }
-                }
-            }
-            println!("Done???");
-    
-        });
-    
-        
-        println!("Sending stuff");
-        for i in 0..10 {
-            let msg_content = format!("Hello {}",i);
-            let data = msg_content.as_bytes();
-            client.publish("hello/rumqtt", QoS::AtLeastOnce, false, data).unwrap();
-            thread::sleep(Duration::from_millis(100));
-        };
-    
-        poller.join().unwrap();
-    }
-        
     fn report(&mut self, metrics: &Vec<Metric>) {
         for metric in metrics {
-            println!("MQTT : Metric {} has value {}", metric.name, metric.value);
+            
+            //println!("MQTT : Metric {} has value {}", metric.name, metric.value);
 
-            println!("Sending stuff");
+            //println!("Sending stuff");
             let msg_content = format!("{}",metric.value);
-            let data = msg_content.as_bytes();
             let channel = format!("{}{}",&self.config.publish_channel, &metric.name);
+            let data = msg_content.as_bytes();
+            println!("{} publish {} : {}", self.name(), channel, msg_content);
             self.client.publish(channel, QoS::AtLeastOnce, false, data).unwrap();
             thread::sleep(Duration::from_millis(100));
 
         }
     }
 
-    fn shutdown(&mut self) -> Option<&mut std::thread::JoinHandle<()>> {
-        println!("Disconnecting");
+    fn shutdown(&mut self) -> Option<std::thread::JoinHandle<()>> {
+        println!("{} - disconnecting", self.name());
         self.client.disconnect().unwrap();
-        //self.poller.join().unwrap();
-        return Some(&mut self.poller);
+        return self.poller.take();
     }
 }
 

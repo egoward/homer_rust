@@ -12,14 +12,13 @@ pub trait DestinationConfig {
 }
 
 pub trait Destination {
-    fn name(&self) -> String;
+    fn name(&self) -> &String;
     fn report(&mut self, metrics: &Vec<Metric>) -> ();
 
     fn test(&mut self) -> () {
         println!("{} : No tests applicable", self.name());
     }
-    fn shutdown(&mut self) -> Option<&mut std::thread::JoinHandle<()>> {
-        println!("{} : No shutdown logic", self.name());
+    fn shutdown(&mut self) -> Option<std::thread::JoinHandle<()>> {
         return Option::None;
     }
 }
@@ -28,7 +27,9 @@ pub trait Destination {
 #[derive(Deserialize,Serialize)]
 pub struct DestinationLogConfig {}
 
-pub struct DestinationLog {}
+pub struct DestinationLog {
+    name : String
+}
 
 #[typetag::serde(name = "log")]
 impl DestinationConfig for DestinationLogConfig {
@@ -36,17 +37,19 @@ impl DestinationConfig for DestinationLogConfig {
         return String::from("MetricDestinationLog");
     }
     fn init(self : Box<Self>) -> Box<dyn Destination> {
-        return Box::new( DestinationLog{} )
+        return Box::new( DestinationLog{
+            name: "log".to_string()
+        } )
     }
 }
 
 impl Destination for DestinationLog {
-    fn name(&self) -> String { 
-        return "DestinationLog".to_string() 
+    fn name(&self) -> &String { 
+        return &self.name;
     }
     fn report(&mut self, metrics: &Vec<Metric>) {
         for metric in metrics {
-            println!("Metric {} has value {}", metric.name, metric.value);
+            println!("{} - metric {} has value {}", self.name(), metric.name, metric.value);
         }
     }
 }
@@ -64,27 +67,28 @@ pub struct Manager {
 
 impl Manager {
     pub fn create( config : Config ) -> Manager {
+        println!("manager - creating from configuration");
         let mut manager = Manager {
             destinations: vec![]
         };
-        for destination in config.destinations {
-            manager.destinations.push(destination.init())
+        for destination_conf in config.destinations {
+            println!("manager - creating {}", destination_conf.name());
+            let destination = destination_conf.init();
+            println!("manager - created {}", destination.name());
+            manager.destinations.push(destination)
 
         }
         return manager;
     }
 
     pub fn test(&mut self) {
-        println!("Running metric manager");
-        //for source in &self.sources {
-            //println!("Checking {}", source.name());
-            //let metrics = source.poll();
+        println!("manager - sending test metric to all destinations");
         let metrics = vec![Metric {
             name: String::from("TestMetric"),
             value: String::from("1.0"),
         }];
         for destination in &mut self.destinations {
-            println!("Sending to {}", destination.name());
+            println!("manager - sending test metric to {}", destination.name());
             destination.report( &metrics );
         }        
     }       
@@ -94,20 +98,18 @@ impl Manager {
     }
 
     pub fn shutdown(mut self) {
-        println!("Shutting down");
+        println!("manager - shutting down");
         for destination in &mut self.destinations {
-            let x = destination.shutdown();
-            let y = x.unwrap();
-            let q = y.join();
-            
-
-            /*println!("Shutdown to {}", destination.name());
-            match x {
-                Some(&_thread) => {
-                    &_thread.join().unwrap();
-
+            println!("manager - shutting down {}", destination.name());
+            match destination.shutdown() {
+                Some(join_handle) => {
+                    println!("manager - {} is busy, waiting", destination.name() );
+                    join_handle.join().unwrap();
+                    println!("manager - {} is done", destination.name() );
                 }
-            }*/
+                None => {
+                }
+            }
         }
     }
 }
