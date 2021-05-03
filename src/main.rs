@@ -10,6 +10,7 @@ use homer_relay::log::*;
 use homer_relay::mqtt::*;
 use homer_relay::cloudwatch::*;
 use homer_relay::constant::*;
+use homer_relay::bluetooth::*;
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Debug,StructOpt)]
@@ -47,7 +48,8 @@ fn write_example_config() {
             Box::new( DestinationCloudwatchConfig::example_config()),
         },
         sources : vec! {
-            Box::new( SourceConstantConfig::example_config())
+            Box::new( SourceConstantConfig::example_config()),
+            Box::new( SourceBLEConfig::example_config())
         }
     };
 
