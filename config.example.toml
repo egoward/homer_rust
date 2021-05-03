@@ -11,5 +11,11 @@ publish_channel = "/MetricRelay/"
 [[destinations]]
 type = "cloudwatch"
 namespace = "TestCloudwatchNamespace"
-region = "eu-west-1"
+region = "eu-west-2"
 profile = "edonica"
+
+[[sources]]
+type = "log"
+object = "TestObject"
+property = "Temperature"
+value = 2.34
