@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use async_trait::async_trait;
 
 pub struct Metric {
     pub name: String,
@@ -11,9 +12,10 @@ pub trait DestinationConfig {
     fn init(self : Box<Self>) -> Box<dyn Destination>;
 }
 
+#[async_trait]
 pub trait Destination {
     fn name(&self) -> &String;
-    fn report(&mut self, metrics: &Vec<Metric>) -> ();
+    async fn report(&mut self, metrics: &Vec<Metric>) -> ();
 
     fn test(&mut self) -> () {
         println!("{} : No tests applicable", self.name());
@@ -43,11 +45,12 @@ impl DestinationConfig for DestinationLogConfig {
     }
 }
 
+#[async_trait]
 impl Destination for DestinationLog {
     fn name(&self) -> &String { 
         return &self.name;
     }
-    fn report(&mut self, metrics: &Vec<Metric>) {
+    async fn report(&mut self, metrics: &Vec<Metric>) {
         for metric in metrics {
             println!("{} - metric {} has value {}", self.name(), metric.name, metric.value);
         }
@@ -81,7 +84,7 @@ impl Manager {
         return manager;
     }
 
-    pub fn test(&mut self) {
+    pub async fn test(&mut self) {
         println!("manager - sending test metric to all destinations");
         let metrics = vec![Metric {
             name: String::from("TestMetric"),
@@ -89,7 +92,7 @@ impl Manager {
         }];
         for destination in &mut self.destinations {
             println!("manager - sending test metric to {}", destination.name());
-            destination.report( &metrics );
+            destination.report( &metrics ).await;
         }        
     }       
 
