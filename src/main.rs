@@ -6,6 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 // use homer_relay::core::*;
+use homer_relay::log::*;
 use homer_relay::mqtt::*;
 use homer_relay::cloudwatch::*;
 
