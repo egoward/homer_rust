@@ -2,7 +2,8 @@ use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
 
 pub struct Metric {
-    pub name: String,
+    pub object: String,
+    pub property: String,
     pub value: String,
 }
 
@@ -52,7 +53,7 @@ impl Destination for DestinationLog {
     }
     async fn report(&mut self, metrics: &Vec<Metric>) {
         for metric in metrics {
-            println!("{} - metric {} has value {}", self.name(), metric.name, metric.value);
+            println!("{} - object {} has a {} of {}", self.name(), metric.object, metric.property, metric.value);
         }
     }
 }
@@ -87,8 +88,9 @@ impl Manager {
     pub async fn test(&mut self) {
         println!("manager - sending test metric to all destinations");
         let metrics = vec![Metric {
-            name: String::from("TestMetric"),
-            value: String::from("1.0"),
+            object: String::from("TestSensor"),
+            property: String::from("Temperature"),
+            value: String::from("1.23"),
         }];
         for destination in &mut self.destinations {
             println!("manager - sending test metric to {}", destination.name());

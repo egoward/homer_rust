@@ -8,7 +8,6 @@ use std::time::Duration;
 // use homer_relay::core::*;
 use homer_relay::mqtt::*;
 use homer_relay::cloudwatch::*;
-use tokio::runtime;
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Debug,StructOpt)]

@@ -19,5 +19,6 @@ ctrlc = "3.1.9"
 rusoto_core = "0.46.0"
 rusoto_cloudwatch = "0.46.0"
 futures = "0.3.14"
-tokio = ""
+tokio = { version = "1", features = ["full"] }
+
 async-trait = "0.1.50"
