@@ -9,6 +9,7 @@ use std::time::Duration;
 use homer_relay::log::*;
 use homer_relay::mqtt::*;
 use homer_relay::cloudwatch::*;
+use homer_relay::constant::*;
 
 /// Search for a pattern in a file and display the lines that contain it.
 #[derive(Debug,StructOpt)]
@@ -44,6 +45,9 @@ fn write_example_config() {
             Box::new( DestinationLogConfig {} ),
             Box::new( DestinationMQTTConfig::example_config()),
             Box::new( DestinationCloudwatchConfig::example_config()),
+        },
+        sources : vec! {
+            Box::new( SourceConstantConfig::example_config())
         }
     };
 
@@ -109,8 +113,8 @@ async fn main() {
         }
 
         Command::Run {} => {
-            let manager = Manager::create( config );
-            manager.run();
+            let mut manager = Manager::create( config );
+            manager.run().await;
         }
 
     }
