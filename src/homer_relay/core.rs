@@ -1,7 +1,9 @@
 use serde::{Serialize, Deserialize};
+use async_trait::async_trait;
 
 pub struct Metric {
-    pub name: String,
+    pub object: String,
+    pub property: String,
     pub value: String,
 }
 
@@ -11,46 +13,16 @@ pub trait DestinationConfig {
     fn init(self : Box<Self>) -> Box<dyn Destination>;
 }
 
+#[async_trait]
 pub trait Destination {
     fn name(&self) -> &String;
-    fn report(&mut self, metrics: &Vec<Metric>) -> ();
+    async fn report(&mut self, metrics: &Vec<Metric>) -> ();
 
     fn test(&mut self) -> () {
         println!("{} : No tests applicable", self.name());
     }
     fn shutdown(&mut self) -> Option<std::thread::JoinHandle<()>> {
         return Option::None;
-    }
-}
-
-
-#[derive(Deserialize,Serialize)]
-pub struct DestinationLogConfig {}
-
-pub struct DestinationLog {
-    name : String
-}
-
-#[typetag::serde(name = "log")]
-impl DestinationConfig for DestinationLogConfig {
-    fn name(&self) -> String {
-        return String::from("MetricDestinationLog");
-    }
-    fn init(self : Box<Self>) -> Box<dyn Destination> {
-        return Box::new( DestinationLog{
-            name: "log".to_string()
-        } )
-    }
-}
-
-impl Destination for DestinationLog {
-    fn name(&self) -> &String { 
-        return &self.name;
-    }
-    fn report(&mut self, metrics: &Vec<Metric>) {
-        for metric in metrics {
-            println!("{} - metric {} has value {}", self.name(), metric.name, metric.value);
-        }
     }
 }
 
@@ -81,15 +53,16 @@ impl Manager {
         return manager;
     }
 
-    pub fn test(&mut self) {
+    pub async fn test(&mut self) {
         println!("manager - sending test metric to all destinations");
         let metrics = vec![Metric {
-            name: String::from("TestMetric"),
-            value: String::from("1.0"),
+            object: String::from("TestSensor"),
+            property: String::from("Temperature"),
+            value: String::from("1.23"),
         }];
         for destination in &mut self.destinations {
             println!("manager - sending test metric to {}", destination.name());
-            destination.report( &metrics );
+            destination.report( &metrics ).await;
         }        
     }       
 

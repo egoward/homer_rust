@@ -6,6 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 // use homer_relay::core::*;
+use homer_relay::log::*;
 use homer_relay::mqtt::*;
 use homer_relay::cloudwatch::*;
 
@@ -54,7 +55,8 @@ fn write_example_config() {
 }
 
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = CommandLine::from_args();
 
     if args.verbose {
@@ -92,7 +94,7 @@ fn main() {
     match &args.cmd {
         Command::TestSend {} => {
             let mut manager = Manager::create( config );
-            manager.test();
+            manager.test().await;
             manager.shutdown();
             println!("Waiting for a second in case there's stuff in the background");
             thread::sleep(Duration::from_millis(1000));

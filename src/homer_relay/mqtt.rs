@@ -2,6 +2,7 @@ use rumqttc::{MqttOptions, Client, QoS, Event, Packet, Outgoing};
 use std::time::Duration;
 use std::thread;
 use std::str;
+use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 
 pub use super::core::*;
@@ -103,21 +104,17 @@ pub struct DestinationMQTT {
 
 }
 
+#[async_trait]
 impl Destination for DestinationMQTT {
     fn name(&self) -> &String { 
         return &self.name;
     }
 
-    fn report(&mut self, metrics: &Vec<Metric>) {
+    async fn report(&mut self, metrics: &Vec<Metric>) {
         for metric in metrics {
-            
-            //println!("MQTT : Metric {} has value {}", metric.name, metric.value);
-
-            //println!("Sending stuff");
-            let msg_content = format!("{}",metric.value);
-            let channel = format!("{}{}",&self.config.publish_channel, &metric.name);
-            let data = msg_content.as_bytes();
-            println!("{} publish {} : {}", self.name(), channel, msg_content);
+            let channel = format!("{}{}/{}",&self.config.publish_channel, &metric.object, &metric.property);
+            println!("{} publish {} : {}", self.name(), channel, metric.value);
+            let data = metric.value.as_bytes();
             self.client.publish(channel, QoS::AtLeastOnce, false, data).unwrap();
             thread::sleep(Duration::from_millis(100));
 
