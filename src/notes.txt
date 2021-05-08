@@ -23,3 +23,8 @@ Homer-Rusty
 
 
 
+
+
+Bluetooth companies and services maintained here:
+  https://github.com/NordicSemiconductor/bluetooth-numbers-database
+

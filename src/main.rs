@@ -4,6 +4,7 @@ mod homer_relay;
 use structopt::StructOpt;
 use std::thread;
 use std::time::Duration;
+use log;
 
 // use homer_relay::core::*;
 use homer_relay::log::*;
@@ -20,7 +21,17 @@ enum Command {
     TestSend {
     },
     #[structopt(about = "Test Bluetooth Low Energy")]
-    TestBLE {
+    BLETest {
+    },
+    #[structopt(about = "Scan for bluetooth devices")]
+    BLEScan {
+        #[structopt(about = "Duration of scan")]
+        duration : u64
+    },
+    #[structopt(about = "Connect to a device")]
+    BLEConnect {
+        #[structopt(name = "id", long = "id")]
+        id: String,
     },
     #[structopt(about = "Run the thing")]
     Run {
@@ -60,21 +71,39 @@ fn write_example_config() {
     std::fs::write(filename, test_output).unwrap();
 }
 
+fn ctrl_channel() -> Result<crossbeam_channel::Receiver<()>, ctrlc::Error> {
+    let (sender, receiver) = crossbeam_channel::bounded(100);
+    ctrlc::set_handler(move || {
+        println!("Received Ctrl-C");
+        let _ = sender.send(());
+    })?;
+
+    Ok(receiver)
+}
 
 #[tokio::main]
 async fn main() {
+    println!("Parsing  arguments");
     let args = CommandLine::from_args();
+    println!("Got this : {:?}",args);
+
+    let log_level = match args.verbose {
+        true => log::LevelFilter::Trace,
+        false => log::LevelFilter::Info
+    };
+
+    simple_logger::SimpleLogger::new().with_level(log_level).init().unwrap();
 
     if args.verbose {
-        println!("Verbose mode!");
-        println!("Arguments : {:?}",args);
-        println!("Using config from {}", args.config_file);
+        log::trace!("Verbose mode!");
+        log::trace!("Arguments : {:?}",args);
     }
+    log::info!("Using config from {}", args.config_file);
 
     let config_content = match std::fs::read_to_string(&args.config_file) {
         Ok(file) => file,
         Err(error) => {
-            println!("Error opening file \"{}\"", &args.config_file);
+            log::error!("Error opening file \"{}\"", &args.config_file);
             panic!("Error : {:?}",error)
         },
     };
@@ -82,7 +111,7 @@ async fn main() {
      let config: Config = match toml::from_str(&config_content) {
         Ok(m) => m,
         Err(error) => {
-            println!("Error reading configuration file \"{}\"", &args.config_file);
+            log::error!("Error reading configuration file \"{}\"", &args.config_file);
             write_example_config();            
             panic!("Error : {:?}",error)
         },
@@ -93,9 +122,8 @@ async fn main() {
         // println!("Configuration : {:?}",metricManager);
      }
 
-    ctrlc::set_handler(move || {
-        println!("received Ctrl+C!");
-    }).unwrap();
+
+     let ctrl_c_events = ctrl_channel().unwrap();
 
     match &args.cmd {
         Command::TestSend {} => {
@@ -107,13 +135,23 @@ async fn main() {
             println!("Done");
 
         }
-        Command::TestBLE {} => {
+        Command::BLETest {} => {
             ble::main_ble();
         }
         Command::WriteExampleConfig {} => {
             write_example_config();
         }
-
+        Command::BLEScan{duration} => {
+            let mut x = BleManager::create();
+            x.scan(ctrl_c_events, Duration::from_secs(*duration));
+            x.list();
+            x.shutdown();
+        },
+        Command::BLEConnect {id} => {
+            let mut x = BleManager::create();
+            x.connect(ctrl_c_events, id.clone());
+            x.shutdown();
+        }        
         Command::Run {} => {
             let mut manager = Manager::create( config );
             manager.run().await;
