@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/btle1.exe",
-            "args": ["ble-scan"],
+            "args": ["--verbose","ble-scan"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

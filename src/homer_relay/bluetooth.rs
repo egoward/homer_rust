@@ -24,7 +24,7 @@ use btleplug::api::{bleuuid::BleUuid, CentralEvent};
 
 #[cfg(target_os = "linux")]
 fn print_adapter_info(adapter: &Adapter) {
-    println!(
+    log::trace!(
         "connected adapter {:?} is powered: {:?}",
         adapter.name(),
         adapter.is_powered()
@@ -34,7 +34,7 @@ fn print_adapter_info(adapter: &Adapter) {
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 fn print_adapter_info(_adapter: &Adapter) {
-    println!("adapter info can't be printed on Windows 10 or mac");
+    log::trace!("adapter info can't be printed on Windows 10 or mac");
 }
 
 pub use super::core::*;
@@ -100,14 +100,14 @@ pub struct BleManager {
 impl BleManager {
 
     pub fn create() -> BleManager {
-        println!("Testing bluetooth");
+        log::info!("Initialising bluetooth");
 
         let bluetooth_db = Arc::new(BluetoothDB::create());
 
         let manager = Manager::new().unwrap();
         let adapter_list : Vec<Adapter> = manager.adapters().unwrap();
         
-        println!("Adapters : {}", adapter_list.len() );
+        log::trace!("Adapters : {}", adapter_list.len() );
 
         let adapter = adapter_list.into_iter().nth(0).unwrap();
 
@@ -120,24 +120,24 @@ impl BleManager {
 
         let dbRef = Arc::clone(&bluetooth_db);
         let poller = thread::spawn( move || {
-            println!("Bluetooth Poller started");
+            log::info!("Bluetooth Poller started");
             while let Ok(event) = event_receiver.recv() {
                 match event {
                     CentralEvent::DeviceDiscovered(bd_addr) => {
-                        println!("DeviceDiscovered: {:?}", bd_addr);
+                        log::trace!("DeviceDiscovered: {:?}", bd_addr);
                     }
                     CentralEvent::DeviceConnected(bd_addr) => {
-                        println!("DeviceConnected: {:?}", bd_addr);
+                        log::trace!("DeviceConnected: {:?}", bd_addr);
                     }
                     CentralEvent::DeviceDisconnected(bd_addr) => {
-                        println!("DeviceDisconnected: {:?}", bd_addr);
+                        log::trace!("DeviceDisconnected: {:?}", bd_addr);
                     }
                     CentralEvent::ManufacturerDataAdvertisement {
                         address,
                         manufacturer_id,
                         data,
                     } => {
-                        println!(
+                        log::trace!(
                             "ManufacturerDataAdvertisement: {:?}, {} {}, {:x?}",
                             address, manufacturer_id, dbRef.getCompany( manufacturer_id ), data
                         );
@@ -148,7 +148,7 @@ impl BleManager {
                         service,
                         data,
                     } => {
-                        println!(
+                        log::trace!(
                             "ServiceDataAdvertisement: {:?}, {}, {:x?}",
                             address,
                             service.to_string(),
@@ -159,14 +159,14 @@ impl BleManager {
                     CentralEvent::ServicesAdvertisement { address, services } => {
                         let services: Vec<String> =
                             services.into_iter().map(|s| s.to_short_string()).collect();
-                        println!("ServicesAdvertisement: {:?}, {:?}", address, services);
+                        log::trace!("ServicesAdvertisement: {:?}, {:?}", address, services);
                     }                    
                     e => {
-                        println!("Event recevied {:?}",e);
+                        log::trace!("Event recevied {:?}",e);
                     }
                 }
             }            
-            println!("Loop finished");
+            log::info!("Bluetooth Poller finished");
         });
 
         //let adapter = adapter_list.remove(0);
@@ -180,16 +180,15 @@ impl BleManager {
     }
 
     fn shutdown(&mut self) -> Option<std::thread::JoinHandle<()>> {
-        println!("Terminating bluetooth");
-        //self.adapter.listener..drop();
-        println!("Bluetooth disconnecting");
+        log::trace!("Terminating bluetooth (only we don't know how)");
+        //What do we do here??!?
         return self.poller.take();
     }
 
 
 
     pub fn scan(&mut self, duration : Duration , ctrl_channel : crossbeam_channel::Receiver<()>) {
-        println!("Doing scan for {:?} ...", duration);
+        log::trace!("Doing scan for {:?} ...", duration);
         self.adapter.start_scan().unwrap();
 
         let ticks = crossbeam_channel::tick(duration);
@@ -197,16 +196,16 @@ impl BleManager {
         loop {
             crossbeam_channel::select! {
                 recv(ticks) -> _ => {
-                    println!("Finished waiting");
+                    log::trace!("Finished waiting");
                     break;
                 }
                 recv(ctrl_channel) -> _ => {
-                    println!("Aborting due to Ctrl-C!");
+                    log::trace!("Aborting due to Ctrl-C!");
                     break;
                 }
             }
         }
-        println!("Done");
+        log::trace!("Done");
     }
 
     pub fn list(&mut self) {
@@ -273,7 +272,7 @@ impl BluetoothDB {
 
 
     fn readNameCodeFile(filename : &str)-> std::collections::HashMap<u16, String> {
-        println!("Parsing {}", filename);
+        log::trace!("Parsing {}", filename);
         let file = std::fs::File::open(filename).unwrap();
         let json : Vec<CompanyJSON> = serde_json::from_reader(file).unwrap();
         return json.into_iter().map( |x| (x.code, x.name)).collect();
@@ -281,8 +280,6 @@ impl BluetoothDB {
 
     fn parseUUID( string : &str) -> Uuid {
         let baseUUID : Uuid = Uuid::parse_str("00000000-0000-1000-8000-00805F9B34FB").unwrap();
-        //let (a,b,c,d) = baseUUID.as_fields();
-        
         
         if string.len() == 4 {
             let stuff = u32::from_str_radix(string, 16);
@@ -296,18 +293,15 @@ impl BluetoothDB {
     }
 
     fn readDescriptorFile(filename : &str) -> std::collections::HashMap<Uuid, BluetoothMetadata> {
-        println!("Parsing {}", filename);
+        log::trace!("Parsing {}", filename);
         let file = std::fs::File::open(filename).unwrap();
         let json : Vec<BluetoothMetadata> = serde_json::from_reader(file).unwrap();
         let ret : std::collections::HashMap<Uuid, BluetoothMetadata> = json.into_iter().map( |x| 
             (BluetoothDB::parseUUID(&x.uuid), x ) 
         ).collect();
-
-        for (k,v) in ret.iter() {
-            println!(" {} => {}", k, v.name);
-
-        }
-
+        // for (k,v) in ret.iter() {
+        //     println!(" {} => {}", k, v.name);
+        // }
         return ret;
     }
 

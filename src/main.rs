@@ -4,6 +4,7 @@ mod homer_relay;
 use structopt::StructOpt;
 use std::thread;
 use std::time::Duration;
+use log;
 
 // use homer_relay::core::*;
 use homer_relay::log::*;
@@ -80,18 +81,27 @@ fn ctrl_channel() -> Result<crossbeam_channel::Receiver<()>, ctrlc::Error> {
 
 #[tokio::main]
 async fn main() {
+    println!("Parsing  arguments");
     let args = CommandLine::from_args();
+    println!("Got this : {:?}",args);
+
+    let logLevel = match args.verbose {
+        true => log::LevelFilter::Trace,
+        false => log::LevelFilter::Info
+    };
+
+    simple_logger::SimpleLogger::new().with_level(logLevel).init().unwrap();
 
     if args.verbose {
-        println!("Verbose mode!");
-        println!("Arguments : {:?}",args);
-        println!("Using config from {}", args.config_file);
+        log::trace!("Verbose mode!");
+        log::trace!("Arguments : {:?}",args);
     }
+    log::info!("Using config from {}", args.config_file);
 
     let config_content = match std::fs::read_to_string(&args.config_file) {
         Ok(file) => file,
         Err(error) => {
-            println!("Error opening file \"{}\"", &args.config_file);
+            log::error!("Error opening file \"{}\"", &args.config_file);
             panic!("Error : {:?}",error)
         },
     };
@@ -99,7 +109,7 @@ async fn main() {
      let config: Config = match toml::from_str(&config_content) {
         Ok(m) => m,
         Err(error) => {
-            println!("Error reading configuration file \"{}\"", &args.config_file);
+            log::error!("Error reading configuration file \"{}\"", &args.config_file);
             write_example_config();            
             panic!("Error : {:?}",error)
         },
@@ -130,9 +140,7 @@ async fn main() {
             write_example_config();
         }
         Command::BLEScan {} => {
-            println!("BLEScan!!");
             let mut x = BleManager::create();
-            //x.addLogListener();
             x.scan(Duration::from_secs(10), ctrl_c_events);
             x.list();
         },
