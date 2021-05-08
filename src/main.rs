@@ -20,7 +20,15 @@ enum Command {
     TestSend {
     },
     #[structopt(about = "Test Bluetooth Low Energy")]
-    TestBLE {
+    BLETest {
+    },
+    #[structopt(about = "Scan for bluetooth devices")]
+    BLEScan {
+    },
+    #[structopt(about = "Connect to a device")]
+    BLEConnect {
+        #[structopt(name = "id", long = "id")]
+        id: String,
     },
     #[structopt(about = "Run the thing")]
     Run {
@@ -60,6 +68,15 @@ fn write_example_config() {
     std::fs::write(filename, test_output).unwrap();
 }
 
+fn ctrl_channel() -> Result<crossbeam_channel::Receiver<()>, ctrlc::Error> {
+    let (sender, receiver) = crossbeam_channel::bounded(100);
+    ctrlc::set_handler(move || {
+        println!("Received Ctrl-C");
+        let _ = sender.send(());
+    })?;
+
+    Ok(receiver)
+}
 
 #[tokio::main]
 async fn main() {
@@ -93,9 +110,8 @@ async fn main() {
         // println!("Configuration : {:?}",metricManager);
      }
 
-    ctrlc::set_handler(move || {
-        println!("received Ctrl+C!");
-    }).unwrap();
+
+     let ctrl_c_events = ctrl_channel().unwrap();
 
     match &args.cmd {
         Command::TestSend {} => {
@@ -107,16 +123,27 @@ async fn main() {
             println!("Done");
 
         }
-        Command::TestBLE {} => {
+        Command::BLETest {} => {
             ble::main_ble();
         }
         Command::WriteExampleConfig {} => {
             write_example_config();
         }
-
+        Command::BLEScan {} => {
+            println!("BLEScan!!");
+            let mut x = BleManager::create();
+            //x.addLogListener();
+            x.scan(Duration::from_secs(10), ctrl_c_events);
+            x.list();
+        },
+        Command::BLEConnect {id} => {
+            let mut x = BleManager::create();
+            x.scan(Duration::from_secs(10),ctrl_c_events);
+            x.connect(id.clone());
+        }        
         Command::Run {} => {
             let mut manager = Manager::create( config );
-            manager.run().await;
+            manager.run();
         }
 
     }
