@@ -25,6 +25,8 @@ enum Command {
     },
     #[structopt(about = "Scan for bluetooth devices")]
     BLEScan {
+        #[structopt(about = "Duration of scan")]
+        duration : u64
     },
     #[structopt(about = "Connect to a device")]
     BLEConnect {
@@ -85,12 +87,12 @@ async fn main() {
     let args = CommandLine::from_args();
     println!("Got this : {:?}",args);
 
-    let logLevel = match args.verbose {
+    let log_level = match args.verbose {
         true => log::LevelFilter::Trace,
         false => log::LevelFilter::Info
     };
 
-    simple_logger::SimpleLogger::new().with_level(logLevel).init().unwrap();
+    simple_logger::SimpleLogger::new().with_level(log_level).init().unwrap();
 
     if args.verbose {
         log::trace!("Verbose mode!");
@@ -139,19 +141,21 @@ async fn main() {
         Command::WriteExampleConfig {} => {
             write_example_config();
         }
-        Command::BLEScan {} => {
+        Command::BLEScan{duration} => {
             let mut x = BleManager::create();
-            x.scan(Duration::from_secs(10), ctrl_c_events);
+            x.scan(Duration::from_secs(*duration), ctrl_c_events);
             x.list();
+            x.shutdown();
         },
         Command::BLEConnect {id} => {
             let mut x = BleManager::create();
             x.scan(Duration::from_secs(10),ctrl_c_events);
             x.connect(id.clone());
+            x.shutdown();
         }        
         Command::Run {} => {
             let mut manager = Manager::create( config );
-            manager.run();
+            manager.run().await;
         }
 
     }

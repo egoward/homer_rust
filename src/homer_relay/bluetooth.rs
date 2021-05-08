@@ -1,4 +1,6 @@
-use uuid::Uuid;
+pub mod db;
+
+use serde::{Serialize, Deserialize};
 
 #[allow(unused_imports)]
 use rand::{thread_rng, Rng};
@@ -7,7 +9,9 @@ use rand::{thread_rng, Rng};
 #[allow(unused_imports)]
 use std::thread;
 use std::time::Duration;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 #[allow(unused_imports)]
 use btleplug::api::{Central, Characteristic, Peripheral};
@@ -20,7 +24,8 @@ use btleplug::corebluetooth::{adapter::Adapter, manager::Manager};
 #[allow(unused_imports)]
 #[cfg(target_os = "windows")]
 use btleplug::winrtble::{adapter::Adapter, manager::Manager};
-use btleplug::api::{bleuuid::BleUuid, CentralEvent};
+use btleplug::api::{CentralEvent,BDAddr};
+
 
 #[cfg(target_os = "linux")]
 fn print_adapter_info(adapter: &Adapter) {
@@ -39,7 +44,6 @@ fn print_adapter_info(_adapter: &Adapter) {
 
 pub use super::core::*;
 
-use serde::{Serialize, Deserialize};
 use async_trait::async_trait;
 
 #[derive(Deserialize,Serialize)]
@@ -48,6 +52,7 @@ pub struct SourceBLEConfig {
 }
 
 pub struct SourceBLE {
+    #[allow(dead_code)]
     config : Box<SourceBLEConfig>,
     name: String,
 }
@@ -90,10 +95,39 @@ impl Source for SourceBLE {
     }
 }
 
+#[derive(Default)]
+pub struct KnownDevice {
+}
+
+pub struct DeviceDB {
+    pub devices :HashMap<BDAddr, KnownDevice>
+}
+
+impl DeviceDB {
+    fn see_device(&mut self, addr : BDAddr ) -> &KnownDevice {
+        let ent = match self.devices.entry(addr) {
+            Entry::Occupied(o) => {o.into_mut()},
+            Entry::Vacant(v) => { 
+                log::info!("DeviceDiscovered: {:?}", addr);
+                v.insert( KnownDevice::default())
+            }
+        };
+        return ent;
+    }
+
+}
+
+
 pub struct BleManager {
+    #[allow(dead_code)]
     manager : Manager,
+    #[allow(dead_code)]
     adapter : Adapter,
-    bluetooth_db : Arc<BluetoothDB>,
+    #[allow(dead_code)]
+    bluetooth_db : Arc<db::BluetoothDB>,
+    #[allow(dead_code)]
+    devices : Arc<Mutex<DeviceDB>>,
+    #[allow(dead_code)]
     poller : Option<std::thread::JoinHandle<()>>
 }
 
@@ -102,7 +136,9 @@ impl BleManager {
     pub fn create() -> BleManager {
         log::info!("Initialising bluetooth");
 
-        let bluetooth_db = Arc::new(BluetoothDB::create());
+        let bluetooth_db = Arc::new(db::BluetoothDB::create());
+
+        let devices = Arc::new(Mutex::new(DeviceDB { devices: HashMap::new()}));
 
         let manager = Manager::new().unwrap();
         let adapter_list : Vec<Adapter> = manager.adapters().unwrap();
@@ -111,26 +147,26 @@ impl BleManager {
 
         let adapter = adapter_list.into_iter().nth(0).unwrap();
 
-//        let x = adapter.connect().unwrap();
-
         print_adapter_info(&adapter);
 
         let event_receiver = adapter.event_receiver().unwrap();
 
-
-        let dbRef = Arc::clone(&bluetooth_db);
+        let db_ref = Arc::clone(&bluetooth_db);
+        let devices_ref = Arc::clone(&devices);
         let poller = thread::spawn( move || {
-            log::info!("Bluetooth Poller started");
+        log::info!("Bluetooth Poller started");
             while let Ok(event) = event_receiver.recv() {
                 match event {
-                    CentralEvent::DeviceDiscovered(bd_addr) => {
-                        log::trace!("DeviceDiscovered: {:?}", bd_addr);
+                    CentralEvent::DeviceDiscovered(address) => {
+                        //log::trace!("DeviceDiscovered: {:?}", address);
+                        devices_ref.lock().unwrap().see_device(address);
+                            
                     }
-                    CentralEvent::DeviceConnected(bd_addr) => {
-                        log::trace!("DeviceConnected: {:?}", bd_addr);
+                    CentralEvent::DeviceConnected(address) => {
+                        log::trace!("DeviceConnected: {:?}", address);
                     }
-                    CentralEvent::DeviceDisconnected(bd_addr) => {
-                        log::trace!("DeviceDisconnected: {:?}", bd_addr);
+                    CentralEvent::DeviceDisconnected(address) => {
+                        log::trace!("DeviceDisconnected: {:?}", address);
                     }
                     CentralEvent::ManufacturerDataAdvertisement {
                         address,
@@ -139,8 +175,9 @@ impl BleManager {
                     } => {
                         log::trace!(
                             "ManufacturerDataAdvertisement: {:?}, {} {}, {:x?}",
-                            address, manufacturer_id, dbRef.getCompany( manufacturer_id ), data
+                            address, manufacturer_id, db_ref.get_company( manufacturer_id ), data
                         );
+                        devices_ref.lock().unwrap().see_device(address);
 
                     }
                     CentralEvent::ServiceDataAdvertisement {
@@ -158,7 +195,7 @@ impl BleManager {
                     }
                     CentralEvent::ServicesAdvertisement { address, services } => {
                         let services: Vec<String> =
-                            services.into_iter().map(|s| s.to_short_string()).collect();
+                            services.into_iter().map(|s| s.to_string()).collect();
                         log::trace!("ServicesAdvertisement: {:?}, {:?}", address, services);
                     }                    
                     e => {
@@ -172,6 +209,7 @@ impl BleManager {
         //let adapter = adapter_list.remove(0);
         return BleManager {
             manager,
+            devices,
             adapter,
             bluetooth_db : bluetooth_db,
             poller: Some(poller)
@@ -179,7 +217,7 @@ impl BleManager {
         };
     }
 
-    fn shutdown(&mut self) -> Option<std::thread::JoinHandle<()>> {
+    pub fn shutdown(&mut self) -> Option<std::thread::JoinHandle<()>> {
         log::trace!("Terminating bluetooth (only we don't know how)");
         //What do we do here??!?
         return self.poller.take();
@@ -210,24 +248,41 @@ impl BleManager {
 
     pub fn list(&mut self) {
         for peripheral in self.adapter.peripherals().iter() {
-            //let p : &dyn Peripheral = peripheral;
+            let p = peripheral.properties();//.local_name,
             println!(
-                "peripheral : {:?} {:?} is connected: {:?}",
+                "{} Power:{}", 
                 peripheral.address(),
-                peripheral.properties().local_name,
-                peripheral.is_connected()
+                match p.tx_power_level { Some(x) => x.to_string(), None => "?".to_string()}
             );
 
-            match peripheral.discover_characteristics() {
-                Err(error) => {
-                    println!("  Error : {:?}",error)
-                }
-                Ok(characteristics) => { /*{Vec<Characteristic>} */
-                    for ch in characteristics {
-                        println!("  {:?}",ch)
-                    }
-                }
+            if let Some(n) = &p.local_name {
+                println!( "  Name : \"{}\"",n);
             }
+
+            match &p.local_name { Some(x) => x, None => "?"};
+
+
+            for (id, data) in p.manufacturer_data {
+                println!( "  Manufacturer Data {} ({})  {:?}",id,self.bluetooth_db.get_company(id), hex::encode(data));
+            }
+
+            for (uuid, data) in p.service_data {
+                let name = self.bluetooth_db.get_service_name(uuid);
+                println!( "  Service Data {} ({})  {:?}",uuid,name, hex::encode(data));
+            }
+            for uuid in p.services {
+                println!( "  Service {} ({})",uuid,self.bluetooth_db.get_service_name(uuid));
+            }
+            
+            let properties : btleplug::api::PeripheralProperties = peripheral.properties();
+            println!("Properties : {:?}",properties);
+
+            let characteristics : std::collections::BTreeSet<btleplug::api::Characteristic> = peripheral.characteristics();
+            println!("  Char length : {:?}",characteristics.len());
+            for q in characteristics.iter() {
+                println!("  Characteristics : {:?}",q);
+            }
+
         }
 
         println!("Done");
@@ -243,82 +298,3 @@ impl BleManager {
 
 }
 
-#[derive(Deserialize)]
-struct CompanyJSON {
-    code: u16,
-    name: String,
-}   
-
-#[derive(Deserialize)]
-struct BluetoothMetadata {
-    name: String,
-    identifier: String,
-    uuid: String,
-    source: String
-}
-
-pub struct BluetoothDB {
-    mapCompany : std::collections::HashMap<u16, String>,
-    mapCharacteristic : std::collections::HashMap<Uuid, BluetoothMetadata>,
-    mapService : std::collections::HashMap<Uuid, BluetoothMetadata>,
-    mapDescriptor : std::collections::HashMap<Uuid, BluetoothMetadata>,
-
-}
-
- 
-
-
-impl BluetoothDB {
-
-
-    fn readNameCodeFile(filename : &str)-> std::collections::HashMap<u16, String> {
-        log::trace!("Parsing {}", filename);
-        let file = std::fs::File::open(filename).unwrap();
-        let json : Vec<CompanyJSON> = serde_json::from_reader(file).unwrap();
-        return json.into_iter().map( |x| (x.code, x.name)).collect();
-    }
-
-    fn parseUUID( string : &str) -> Uuid {
-        let baseUUID : Uuid = Uuid::parse_str("00000000-0000-1000-8000-00805F9B34FB").unwrap();
-        
-        if string.len() == 4 {
-            let stuff = u32::from_str_radix(string, 16);
-            //let ret = baseUUID;
-            return baseUUID;
-        } else if string.len() == 36  {
-            return Uuid::parse_str( string ).unwrap();
-        } else {
-            panic!("Unexpected length of uuid {} ({})" , string, string.len())
-        }
-    }
-
-    fn readDescriptorFile(filename : &str) -> std::collections::HashMap<Uuid, BluetoothMetadata> {
-        log::trace!("Parsing {}", filename);
-        let file = std::fs::File::open(filename).unwrap();
-        let json : Vec<BluetoothMetadata> = serde_json::from_reader(file).unwrap();
-        let ret : std::collections::HashMap<Uuid, BluetoothMetadata> = json.into_iter().map( |x| 
-            (BluetoothDB::parseUUID(&x.uuid), x ) 
-        ).collect();
-        // for (k,v) in ret.iter() {
-        //     println!(" {} => {}", k, v.name);
-        // }
-        return ret;
-    }
-
-    pub fn create() -> BluetoothDB {
-        return BluetoothDB {
-            mapCompany : BluetoothDB::readNameCodeFile("data/bluetooth-numbers-database/v1/company_ids.json"),
-            mapCharacteristic : BluetoothDB::readDescriptorFile("data/bluetooth-numbers-database/v1/characteristic_uuids.json"),
-            mapService : BluetoothDB::readDescriptorFile("data/bluetooth-numbers-database/v1/service_uuids.json"),
-            mapDescriptor : BluetoothDB::readDescriptorFile("data/bluetooth-numbers-database/v1/descriptor_uuids.json"),
-        }
-    }
-
-    fn getCompany(&self, id : u16) -> String {
-        match self.mapCompany.get(&id) {
-            Some(v) => {return v.clone();}
-            None => {return format!("Unknown({})",id)}
-        }
-    }
-
-}
