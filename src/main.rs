@@ -143,14 +143,13 @@ async fn main() {
         }
         Command::BLEScan{duration} => {
             let mut x = BleManager::create();
-            x.scan(Duration::from_secs(*duration), ctrl_c_events);
+            x.scan(ctrl_c_events, Duration::from_secs(*duration));
             x.list();
             x.shutdown();
         },
         Command::BLEConnect {id} => {
             let mut x = BleManager::create();
-            x.scan(Duration::from_secs(10),ctrl_c_events);
-            x.connect(id.clone());
+            x.connect(ctrl_c_events, id.clone());
             x.shutdown();
         }        
         Command::Run {} => {

@@ -24,7 +24,10 @@ use btleplug::corebluetooth::{adapter::Adapter, manager::Manager};
 #[allow(unused_imports)]
 #[cfg(target_os = "windows")]
 use btleplug::winrtble::{adapter::Adapter, manager::Manager};
+
+
 use btleplug::api::{CentralEvent,BDAddr};
+
 
 
 #[cfg(target_os = "linux")]
@@ -114,6 +117,7 @@ impl DeviceDB {
         };
         return ent;
     }
+    
 
 }
 
@@ -127,8 +131,9 @@ pub struct BleManager {
     bluetooth_db : Arc<db::BluetoothDB>,
     #[allow(dead_code)]
     devices : Arc<Mutex<DeviceDB>>,
-    #[allow(dead_code)]
-    poller : Option<std::thread::JoinHandle<()>>
+    //#[allow(dead_code)]
+    poller : Option<std::thread::JoinHandle<()>>,
+    receiver : crossbeam_channel::Receiver<CentralEvent>
 }
 
 impl BleManager {
@@ -151,66 +156,29 @@ impl BleManager {
 
         let event_receiver = adapter.event_receiver().unwrap();
 
-        let db_ref = Arc::clone(&bluetooth_db);
-        let devices_ref = Arc::clone(&devices);
-        let poller = thread::spawn( move || {
-        log::info!("Bluetooth Poller started");
-            while let Ok(event) = event_receiver.recv() {
-                match event {
-                    CentralEvent::DeviceDiscovered(address) => {
-                        //log::trace!("DeviceDiscovered: {:?}", address);
-                        devices_ref.lock().unwrap().see_device(address);
-                            
-                    }
-                    CentralEvent::DeviceConnected(address) => {
-                        log::trace!("DeviceConnected: {:?}", address);
-                    }
-                    CentralEvent::DeviceDisconnected(address) => {
-                        log::trace!("DeviceDisconnected: {:?}", address);
-                    }
-                    CentralEvent::ManufacturerDataAdvertisement {
-                        address,
-                        manufacturer_id,
-                        data,
-                    } => {
-                        log::trace!(
-                            "ManufacturerDataAdvertisement: {:?}, {} {}, {:x?}",
-                            address, manufacturer_id, db_ref.get_company( manufacturer_id ), data
-                        );
-                        devices_ref.lock().unwrap().see_device(address);
+        //let db_ref = Arc::clone(&bluetooth_db);
+        //let devices_ref = Arc::clone(&devices);
+        
+        let (ble_sender, ble_receiver) = crossbeam_channel::bounded(100);
 
-                    }
-                    CentralEvent::ServiceDataAdvertisement {
-                        address,
-                        service,
-                        data,
-                    } => {
-                        log::trace!(
-                            "ServiceDataAdvertisement: {:?}, {}, {:x?}",
-                            address,
-                            service.to_string(),
-                            //service.to_short_string(),
-                            data
-                        );
-                    }
-                    CentralEvent::ServicesAdvertisement { address, services } => {
-                        let services: Vec<String> =
-                            services.into_iter().map(|s| s.to_string()).collect();
-                        log::trace!("ServicesAdvertisement: {:?}, {:?}", address, services);
-                    }                    
-                    e => {
-                        log::trace!("Event recevied {:?}",e);
-                    }
-                }
+        let poller = thread::spawn( move || {
+
+            log::info!("Bluetooth Poller started");
+            while let Ok(event) = event_receiver.recv() {
+                log::trace!("Poll thread sending {:?}", event);
+                ble_sender.send(event).unwrap();
             }            
             log::info!("Bluetooth Poller finished");
         });
+
+
 
         //let adapter = adapter_list.remove(0);
         return BleManager {
             manager,
             devices,
             adapter,
+            receiver : ble_receiver,
             bluetooth_db : bluetooth_db,
             poller: Some(poller)
 
@@ -223,9 +191,59 @@ impl BleManager {
         return self.poller.take();
     }
 
+    pub fn handle_event(&mut self, event : &CentralEvent) -> () {
+        match event {
+            CentralEvent::DeviceDiscovered(address) => {
+                //log::trace!("DeviceDiscovered: {:?}", address);
+                self.devices.lock().unwrap().see_device(*address);
+                    
+            }
+            CentralEvent::DeviceConnected(address) => {
+                log::trace!("DeviceConnected: {:?}", address);
+            }
+            CentralEvent::DeviceDisconnected(address) => {
+                log::trace!("DeviceDisconnected: {:?}", address);
+            }
+            CentralEvent::ManufacturerDataAdvertisement {
+                address,
+                manufacturer_id,
+                data,
+            } => {
+                log::trace!(
+                    "ManufacturerDataAdvertisement: {:?}, {} {}, {:x?}",
+                    address, manufacturer_id, self.bluetooth_db.get_company( *manufacturer_id ), data
+                );
+                self.devices.lock().unwrap().see_device(*address);
+
+            }
+            CentralEvent::ServiceDataAdvertisement {
+                address,
+                service,
+                data,
+            } => {
+                log::trace!(
+                    "ServiceDataAdvertisement: {:?}, {}, {:x?}",
+                    address,
+                    service.to_string(),
+                    //service.to_short_string(),
+                    data
+                );
+            }
+            CentralEvent::ServicesAdvertisement { address, services } => {
+                let services: Vec<String> =
+                    services.into_iter().map(|s| s.to_string()).collect();
+                log::trace!("ServicesAdvertisement: {:?}, {:?}", address, services);
+            }                    
+            e => {
+                log::trace!("Event recevied {:?}",e);
+            }
+        }
+
+    }
 
 
-    pub fn scan(&mut self, duration : Duration , ctrl_channel : crossbeam_channel::Receiver<()>) {
+
+    pub fn scan(&mut self, ctrl_channel : crossbeam_channel::Receiver<()>, duration : Duration) {
         log::trace!("Doing scan for {:?} ...", duration);
         self.adapter.start_scan().unwrap();
 
@@ -241,11 +259,52 @@ impl BleManager {
                     log::trace!("Aborting due to Ctrl-C!");
                     break;
                 }
+                recv(self.receiver) -> event => {
+                    self.handle_event( &event.unwrap() );
+                }
+
             }
         }
         log::trace!("Done");
     }
 
+    pub fn connect(&mut self, ctrl_channel : crossbeam_channel::Receiver<()>, address: String) {
+
+        log::trace!("Looking for device {} ...", address);
+
+        let address : BDAddr = address.parse().unwrap();
+
+        self.adapter.start_scan().unwrap();
+
+        loop {
+            crossbeam_channel::select! {
+                recv(ctrl_channel) -> _ => {
+                    log::trace!("Aborting due to Ctrl-C!");
+                    break;
+                }
+                recv(self.receiver) -> event => {
+                    let event = event.unwrap();
+                    self.handle_event( &event );
+                    match self.adapter.peripheral(address) {
+                        Some(peripheral) => {
+                            println!("******* Found {:0}", peripheral);
+                            peripheral.connect().unwrap();
+                        },
+                        None => ()
+                    }
+                }
+            }
+        }
+        log::trace!("Done");
+        
+        
+        self.adapter.peripherals().iter().find( |x| {
+            println!("peripheral : {:?}",x.address());
+            return false;
+        });
+    }
+
+    
     pub fn list(&mut self) {
         for peripheral in self.adapter.peripherals().iter() {
             let p = peripheral.properties();//.local_name,
@@ -286,14 +345,6 @@ impl BleManager {
         }
 
         println!("Done");
-    }
-
-    pub fn connect(&mut self, _id: String) {
-        self.adapter.peripherals().iter().find( |x| {
-            println!("peripheral : {:?}",x.address());
-            return false;
-
-        });
     }
 
 }
