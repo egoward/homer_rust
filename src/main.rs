@@ -149,7 +149,11 @@ async fn main() {
         },
         Command::BLEConnect {id} => {
             let mut x = BleManager::create();
-            let address_to_find : btleplug::api::BDAddr = id.parse().unwrap();
+            let address_to_find : btleplug::api::BDAddr = if id == "*" {
+                DBADDR_MAX
+            } else {
+                id.parse().unwrap()
+            };
             x.connect(ctrl_c_events, address_to_find).await;
 
             x.shutdown();

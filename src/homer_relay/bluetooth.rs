@@ -320,7 +320,7 @@ impl BleManager {
                     self.handle_event( &event, address_to_find );
                     match event {
                         CentralEvent::DeviceDiscovered(address) => {
-                            if address == address_to_find {
+                            if match_filter(address_to_find, &address ) {
                                 println!("******* Found {:0}, waiting before connecting!", address);
                                 async_std::task::sleep(Duration::from_secs(1)).await;
                                 let peripheral = self.adapter.peripheral(address).unwrap();
@@ -334,37 +334,20 @@ impl BleManager {
                             }
                         },
                         CentralEvent::DeviceConnected(address) => {
-                            if address == address_to_find {
+                            if match_filter(address_to_find, &address ) {
                                 println!("******* Connected to {:0}, fetching characteristics", address);
                                 let peripheral : PeripheralImp = self.adapter.peripheral(address).unwrap();
                                 let characteristics = peripheral.discover_characteristics().unwrap();
                                 println!("  Characteristics Raw: {:?}",&characteristics);
                                 println!("  Char length : {:?}",characteristics.len());
                                 for characteristic in characteristics.iter() {
-                                    let ch : &Characteristic = characteristic;
-                                    let characterisic_name = self.bluetooth_db.get_characteristic_name(ch.uuid);
-                                    println!("  Characteristic : {} ({}) {:?}", ch.uuid, characterisic_name, ch.properties );
-
-                                    match peripheral.read( ch ) {
-                                        Ok(bytes) => {
-                                            println!("Data : {}", get_bytes_as_hex(&bytes));
-                                            match std::str::from_utf8(&bytes) {
-                                                Ok(str) => {
-                                                    println!("   String : {}",str);
-                                                }
-                                                Err(_) => ()
-                                            }
-                                        }
-                                        Err(e) => {
-                                            println!("   Unable to fetch : {:?}",e);
-                                        }
-                                    }
-
+                                    //let ch : &Characteristic = characteristic;
+                                    self.print_characteristic(characteristic, Some(&peripheral) );
                                 }
                             }
                         },
                         CentralEvent::DeviceUpdated(address) => {
-                            if address == address_to_find {
+                            if match_filter(address_to_find, &address ) {
                                 println!("******* Updated {:0}", address);
                                 
                                 //peripheral.connect().unwrap();
@@ -378,6 +361,33 @@ impl BleManager {
 
         self.list( address_to_find );
 
+    }
+
+    pub fn print_characteristic(&self, characteristic : &Characteristic, optional_peripheral : Option<&PeripheralImp> ) {
+        let characterisic_name = self.bluetooth_db.get_characteristic_name(characteristic.uuid);
+
+        println!("  Characteristic : {} ({}) {:?}", characteristic.uuid, characterisic_name, characteristic.properties );
+
+        match optional_peripheral {
+            Some(peripheral) => {
+                match peripheral.read( characteristic ) {
+                    Ok(bytes) => {
+                        println!("Data : {}", get_bytes_as_hex(&bytes));
+                        match std::str::from_utf8(&bytes) {
+                            Ok(str) => {
+                                println!("   String : {}",str);
+                            }
+                            Err(_) => ()
+                        }
+                    }
+                    Err(e) => {
+                        println!("   Unable to fetch : {:?}",e);
+                    }
+                }
+            }
+            None => {
+            }
+        }
     }
 
     pub fn print_peripheral(&self, peripheral : &PeripheralImp ) {
@@ -410,8 +420,9 @@ impl BleManager {
         }
         let characteristics : std::collections::BTreeSet<btleplug::api::Characteristic> = peripheral.characteristics();
         println!("  Char length : {:?}",characteristics.len());
-        for q in characteristics.iter() {
-            println!("  Characteristics : {:?}",q);
+        for characteristic in characteristics.iter() {
+            self.print_characteristic(characteristic, Option::None);
+            //println!("  Characteristics : {:?}",q);
         }
     }
     
