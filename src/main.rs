@@ -144,12 +144,18 @@ async fn main() {
         Command::BLEScan{duration} => {
             let mut x = BleManager::create();
             x.scan(ctrl_c_events, Duration::from_secs(*duration));
-            x.list();
+            x.list(DBADDR_MAX);
             x.shutdown();
         },
         Command::BLEConnect {id} => {
             let mut x = BleManager::create();
-            x.connect(ctrl_c_events, id.clone());
+            let address_to_find : btleplug::api::BDAddr = if id == "*" {
+                DBADDR_MAX
+            } else {
+                id.parse().unwrap()
+            };
+            x.connect(ctrl_c_events, address_to_find).await;
+
             x.shutdown();
         }        
         Command::Run {} => {

@@ -25,10 +25,19 @@ use btleplug::corebluetooth::{adapter::Adapter, manager::Manager};
 #[cfg(target_os = "windows")]
 use btleplug::winrtble::{adapter::Adapter, manager::Manager};
 
+#[cfg(target_os = "windows")]
+type PeripheralImp = btleplug::winrtble::peripheral::Peripheral;
 
-use btleplug::api::{CentralEvent,BDAddr};
+
+use btleplug::api::{CentralEvent,BDAddr,PeripheralProperties};
 
 
+pub const DBADDR_ZERO :BDAddr =  BDAddr {
+    address : [0,0,0,0,0,0]
+};
+pub const DBADDR_MAX :BDAddr =  BDAddr {
+    address : [0xFF,0xFF,0xFF,0xFF,0xFF,0xFF]
+};    
 
 #[cfg(target_os = "linux")]
 fn print_adapter_info(adapter: &Adapter) {
@@ -37,6 +46,11 @@ fn print_adapter_info(adapter: &Adapter) {
         adapter.name(),
         adapter.is_powered()
     );
+}
+
+
+fn match_filter(filter : BDAddr, address_to_log : &BDAddr ) -> bool {
+    return filter == DBADDR_MAX || filter == *address_to_log;
 }
 
 
@@ -60,6 +74,10 @@ pub struct SourceBLE {
     name: String,
 }
 
+pub fn get_bytes_as_hex(bytes : &Vec<u8>) -> String {
+    let strings : Vec<String> = bytes.into_iter().map( |byte|format!("{:02X}", byte)).collect();
+    return strings.join(":");
+}
 impl SourceBLEConfig {
     pub fn example_config()->SourceBLEConfig {
         return SourceBLEConfig {
@@ -165,7 +183,6 @@ impl BleManager {
 
             log::info!("Bluetooth Poller started");
             while let Ok(event) = event_receiver.recv() {
-                log::trace!("Poll thread sending {:?}", event);
                 ble_sender.send(event).unwrap();
             }            
             log::info!("Bluetooth Poller finished");
@@ -191,7 +208,9 @@ impl BleManager {
         return self.poller.take();
     }
 
-    pub fn handle_event(&mut self, event : &CentralEvent) -> () {
+
+    pub fn handle_event(&mut self, event : &CentralEvent, filter : BDAddr) -> () {
+
         match event {
             CentralEvent::DeviceDiscovered(address) => {
                 //log::trace!("DeviceDiscovered: {:?}", address);
@@ -199,20 +218,31 @@ impl BleManager {
                     
             }
             CentralEvent::DeviceConnected(address) => {
-                log::trace!("DeviceConnected: {:?}", address);
+                if match_filter(filter, address ) {
+                    log::info!("DeviceConnected: {:?}", address);
+                }
             }
             CentralEvent::DeviceDisconnected(address) => {
-                log::trace!("DeviceDisconnected: {:?}", address);
+                if match_filter(filter, address ) {
+                    log::info!("DeviceDisconnected: {:?}", address);
+                }
             }
+            CentralEvent::DeviceUpdated(address) => {
+                if match_filter(filter, address ) {
+                    log::info!("DeviceUpdated: {:?}", address);
+                }
+            }            
             CentralEvent::ManufacturerDataAdvertisement {
                 address,
                 manufacturer_id,
                 data,
             } => {
-                log::trace!(
-                    "ManufacturerDataAdvertisement: {:?}, {} {}, {:x?}",
-                    address, manufacturer_id, self.bluetooth_db.get_company( *manufacturer_id ), data
-                );
+                if match_filter(filter, address ) {
+                    log::info!(
+                        "ManufacturerDataAdvertisement: {:?}, {} {}, {}",
+                        address, manufacturer_id, self.bluetooth_db.get_company( *manufacturer_id ), get_bytes_as_hex(data)
+                    );
+                }
                 self.devices.lock().unwrap().see_device(*address);
 
             }
@@ -221,19 +251,22 @@ impl BleManager {
                 service,
                 data,
             } => {
-                log::trace!(
-                    "ServiceDataAdvertisement: {:?}, {}, {:x?}",
-                    address,
-                    service.to_string(),
-                    //service.to_short_string(),
-                    data
-                );
+                if match_filter(filter, address ) {
+                    log::info!(
+                        "ServiceDataAdvertisement: {:?}, {}, {:x?}",
+                        address,
+                        service.to_string(),
+                        data
+                    );
+                }
             }
             CentralEvent::ServicesAdvertisement { address, services } => {
-                let services: Vec<String> =
-                    services.into_iter().map(|s| s.to_string()).collect();
-                log::trace!("ServicesAdvertisement: {:?}, {:?}", address, services);
-            }                    
+                if match_filter(filter, address ) {
+                    let services: Vec<String> =
+                        services.into_iter().map(|s| s.to_string()).collect();
+                    log::info!("ServicesAdvertisement: {:?}, {:?}", address, services);
+                }
+            }
             e => {
                 log::trace!("Event recevied {:?}",e);
             }
@@ -260,7 +293,7 @@ impl BleManager {
                     break;
                 }
                 recv(self.receiver) -> event => {
-                    self.handle_event( &event.unwrap() );
+                    self.handle_event( &event.unwrap() , DBADDR_ZERO  );
                 }
 
             }
@@ -268,11 +301,11 @@ impl BleManager {
         log::trace!("Done");
     }
 
-    pub fn connect(&mut self, ctrl_channel : crossbeam_channel::Receiver<()>, address: String) {
+    pub async fn connect(&mut self, ctrl_channel : crossbeam_channel::Receiver<()>, address_to_find: BDAddr) {
 
-        log::trace!("Looking for device {} ...", address);
+        log::trace!("Looking for device {} ...", address_to_find.to_string());
 
-        let address : BDAddr = address.parse().unwrap();
+        //let address_to_find : BDAddr = address_to_find.parse().unwrap();
 
         self.adapter.start_scan().unwrap();
 
@@ -284,62 +317,120 @@ impl BleManager {
                 }
                 recv(self.receiver) -> event => {
                     let event = event.unwrap();
-                    self.handle_event( &event );
-                    match self.adapter.peripheral(address) {
-                        Some(peripheral) => {
-                            println!("******* Found {:0}", peripheral);
-                            peripheral.connect().unwrap();
+                    self.handle_event( &event, address_to_find );
+                    match event {
+                        CentralEvent::DeviceDiscovered(address) => {
+                            if match_filter(address_to_find, &address ) {
+                                println!("******* Found {:0}, waiting before connecting!", address);
+                                async_std::task::sleep(Duration::from_secs(1)).await;
+                                let peripheral = self.adapter.peripheral(address).unwrap();
+
+                                println!("******* Connecting to {} !", address);
+
+                                match peripheral.connect() {
+                                    Ok(result) => {println!("Connecting : {:?}", result);}
+                                    Err(e) => {println!("Unable to start connection {:?}",e);}
+                                };
+                            }
                         },
-                        None => ()
+                        CentralEvent::DeviceConnected(address) => {
+                            if match_filter(address_to_find, &address ) {
+                                println!("******* Connected to {:0}, fetching characteristics", address);
+                                let peripheral : PeripheralImp = self.adapter.peripheral(address).unwrap();
+                                let characteristics = peripheral.discover_characteristics().unwrap();
+                                println!("  Characteristics Raw: {:?}",&characteristics);
+                                println!("  Char length : {:?}",characteristics.len());
+                                for characteristic in characteristics.iter() {
+                                    //let ch : &Characteristic = characteristic;
+                                    self.print_characteristic(characteristic, Some(&peripheral) );
+                                }
+                            }
+                        },
+                        CentralEvent::DeviceUpdated(address) => {
+                            if match_filter(address_to_find, &address ) {
+                                println!("******* Updated {:0}", address);
+                                
+                                //peripheral.connect().unwrap();
+                            }
+                        },
+                        _ => ()
                     }
                 }
             }
         }
-        log::trace!("Done");
-        
-        
-        self.adapter.peripherals().iter().find( |x| {
-            println!("peripheral : {:?}",x.address());
-            return false;
-        });
+
+        self.list( address_to_find );
+
     }
 
+    pub fn print_characteristic(&self, characteristic : &Characteristic, optional_peripheral : Option<&PeripheralImp> ) {
+        let characterisic_name = self.bluetooth_db.get_characteristic_name(characteristic.uuid);
+
+        println!("  Characteristic : {} ({}) {:?}", characteristic.uuid, characterisic_name, characteristic.properties );
+
+        match optional_peripheral {
+            Some(peripheral) => {
+                match peripheral.read( characteristic ) {
+                    Ok(bytes) => {
+                        println!("Data : {}", get_bytes_as_hex(&bytes));
+                        match std::str::from_utf8(&bytes) {
+                            Ok(str) => {
+                                println!("   String : {}",str);
+                            }
+                            Err(_) => ()
+                        }
+                    }
+                    Err(e) => {
+                        println!("   Unable to fetch : {:?}",e);
+                    }
+                }
+            }
+            None => {
+            }
+        }
+    }
+
+    pub fn print_peripheral(&self, peripheral : &PeripheralImp ) {
+        let p : &PeripheralProperties = &peripheral.properties();//.local_name,
+        //let x : dyn Peripheral = peripheral;
+        println!(
+            "{}  ({:?}, tx_power_level:{})", 
+            peripheral.address(),
+            p.address_type,
+            match p.tx_power_level { Some(x) => x.to_string(), None => "?".to_string()}
+        );
+
+        if let Some(n) = &p.local_name {
+            println!( "  Name : \"{}\"",n);
+        }
+
+        match &p.local_name { Some(x) => x, None => "?"};
+
+
+        for (id, data) in &p.manufacturer_data {
+            println!( "  Manufacturer Data {} ({})  {:?}",id,self.bluetooth_db.get_company(*id), get_bytes_as_hex(data));
+        }
+
+        for (uuid, data) in &p.service_data {
+            let name = self.bluetooth_db.get_service_name(*uuid);
+            println!( "  Service Data {} ({})  {:?}",uuid,name, get_bytes_as_hex(data));
+        }
+        for uuid in &p.services {
+            println!( "  Service {} ({})",uuid,self.bluetooth_db.get_service_name(*uuid));
+        }
+        let characteristics : std::collections::BTreeSet<btleplug::api::Characteristic> = peripheral.characteristics();
+        println!("  Char length : {:?}",characteristics.len());
+        for characteristic in characteristics.iter() {
+            self.print_characteristic(characteristic, Option::None);
+            //println!("  Characteristics : {:?}",q);
+        }
+    }
     
-    pub fn list(&mut self) {
-        for peripheral in self.adapter.peripherals().iter() {
-            let p = peripheral.properties();//.local_name,
-            println!(
-                "{} Power:{}", 
-                peripheral.address(),
-                match p.tx_power_level { Some(x) => x.to_string(), None => "?".to_string()}
-            );
-
-            if let Some(n) = &p.local_name {
-                println!( "  Name : \"{}\"",n);
-            }
-
-            match &p.local_name { Some(x) => x, None => "?"};
-
-
-            for (id, data) in p.manufacturer_data {
-                println!( "  Manufacturer Data {} ({})  {:?}",id,self.bluetooth_db.get_company(id), hex::encode(data));
-            }
-
-            for (uuid, data) in p.service_data {
-                let name = self.bluetooth_db.get_service_name(uuid);
-                println!( "  Service Data {} ({})  {:?}",uuid,name, hex::encode(data));
-            }
-            for uuid in p.services {
-                println!( "  Service {} ({})",uuid,self.bluetooth_db.get_service_name(uuid));
-            }
-            
-            let properties : btleplug::api::PeripheralProperties = peripheral.properties();
-            println!("Properties : {:?}",properties);
-
-            let characteristics : std::collections::BTreeSet<btleplug::api::Characteristic> = peripheral.characteristics();
-            println!("  Char length : {:?}",characteristics.len());
-            for q in characteristics.iter() {
-                println!("  Characteristics : {:?}",q);
+    pub fn list(&mut self, address_to_find: BDAddr) {
+        let peripherals = self.adapter.peripherals();
+        for peripheral in peripherals.iter() {
+            if match_filter(address_to_find, &peripheral.address()) {
+                self.print_peripheral( peripheral );
             }
 
         }

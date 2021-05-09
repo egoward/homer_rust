@@ -39,12 +39,13 @@ impl BluetoothDB {
     }
 
     fn parse_uuid( string : &str) -> Uuid {
-        let base_uuid : Uuid = Uuid::parse_str("00000000-0000-1000-8000-00805F9B34FB").unwrap();
-        
         if string.len() == 4 {
-            let _stuff = u32::from_str_radix(string, 16);
-            //let ret = baseUUID;
-            return base_uuid;
+            let d1 = u32::from_str_radix(string, 16).unwrap();
+            let d2 = 0;
+            let d3 = 0x1000;
+            let d4 = [0x80,0x00,0x00,0x80,0x5F,0x9B,0x34,0xFB];
+            let ret = Uuid::from_fields( d1,d2,d3,&d4).unwrap();
+            return ret;
         } else if string.len() == 36  {
             return Uuid::parse_str( string ).unwrap();
         } else {
@@ -59,9 +60,6 @@ impl BluetoothDB {
         let ret : std::collections::HashMap<Uuid, BluetoothMetadata> = json.into_iter().map( |x| 
             (BluetoothDB::parse_uuid(&x.uuid), x ) 
         ).collect();
-        // for (k,v) in ret.iter() {
-        //     println!(" {} => {}", k, v.name);
-        // }
         return ret;
     }
 
@@ -85,6 +83,12 @@ impl BluetoothDB {
             Some(v) => {return &v.name;}
             None => {"Unknown"}
         }
-    }    
+    }
+    pub fn get_characteristic_name(&self, uuid : Uuid) -> &str {
+        match self.map_characteristic.get(&uuid) {
+            Some(v) => {return &v.name;}
+            None => {"Unknown"}
+        }
+    }        
 
 }
