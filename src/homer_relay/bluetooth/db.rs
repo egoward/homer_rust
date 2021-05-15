@@ -29,6 +29,10 @@ pub struct BluetoothDB {
 
 }
 
+const BTLT_UUID_D2 : u16 = 0;
+const BTLT_UUID_D3 : u16 = 0x1000;
+const BTLT_UUID_D4 : [u8;8]= [0x80,0x00,0x00,0x80,0x5F,0x9B,0x34,0xFB];
+
 impl BluetoothDB {
 
     fn read_name_code_file(filename : &str)-> std::collections::HashMap<u16, String> {
@@ -38,13 +42,11 @@ impl BluetoothDB {
         return json.into_iter().map( |x| (x.code, x.name)).collect();
     }
 
+
     fn parse_uuid( string : &str) -> Uuid {
         if string.len() == 4 {
             let d1 = u32::from_str_radix(string, 16).unwrap();
-            let d2 = 0;
-            let d3 = 0x1000;
-            let d4 = [0x80,0x00,0x00,0x80,0x5F,0x9B,0x34,0xFB];
-            let ret = Uuid::from_fields( d1,d2,d3,&d4).unwrap();
+            let ret = Uuid::from_fields( d1,BTLT_UUID_D2,BTLT_UUID_D3,&BTLT_UUID_D4).unwrap();
             return ret;
         } else if string.len() == 36  {
             return Uuid::parse_str( string ).unwrap();
@@ -84,10 +86,21 @@ impl BluetoothDB {
             None => {"Unknown"}
         }
     }
-    pub fn get_characteristic_name(&self, uuid : Uuid) -> &str {
+    pub fn get_characteristic_name(&self, uuid : Uuid) -> String {
         match self.map_characteristic.get(&uuid) {
-            Some(v) => {return &v.name;}
-            None => {"Unknown"}
+            Some(v) => {return v.name.to_string();}
+            None => {
+                match uuid.as_fields() {
+                    (a,BTLT_UUID_D2,BTLT_UUID_D3,&BTLT_UUID_D4) => {
+                        format!("BTLE UUID {:#04x}",a)
+                    }
+                    _ => {
+                        format!("UUID {}", uuid)
+                    }
+                }
+                //(a,b,c,d) = uuid.as_Fields();
+
+            }
         }
     }        
 

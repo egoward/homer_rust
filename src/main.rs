@@ -154,7 +154,7 @@ async fn main() {
             } else {
                 id.parse().unwrap()
             };
-            x.connect(ctrl_c_events, address_to_find).await;
+            x.connect_and_print_characteristics(ctrl_c_events, address_to_find).await;
 
             x.shutdown();
         }        
