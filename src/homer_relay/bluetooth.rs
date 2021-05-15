@@ -74,10 +74,33 @@ pub struct SourceBLE {
     name: String,
 }
 
-pub fn get_bytes_as_hex(bytes : &Vec<u8>) -> String {
+pub fn get_bytes_as_hex(bytes : &[u8]) -> String {
     let strings : Vec<String> = bytes.into_iter().map( |byte|format!("{:02X}", byte)).collect();
     return strings.join(":");
 }
+
+fn format_bytes(input_bytes : &[u8]) -> String {
+    match std::str::from_utf8(input_bytes) {
+        Ok(input_string) => {
+            let chars_printable = input_string.chars().filter( |x| (*x as u32) > 15).count();
+            if input_string.len() == 0 {
+                return "(empty)".to_string();
+            }
+            let printable_percent = 100*chars_printable / input_string.len();
+            if printable_percent > 90 {
+                input_string.to_string()
+            } else if printable_percent > 20 && input_string.len() < 20 {
+                return format!("{} (\"{}\")",&get_bytes_as_hex(input_bytes),input_string.to_string());
+                //"\"".to_string + input_string.to_string() + "\" (" + &get_bytes_as_hex(input_bytes) + ")"
+            } else {
+                get_bytes_as_hex(input_bytes)
+            }
+            //println!("    String : {}",input_string.escape_default());
+        }
+        Err(_) => get_bytes_as_hex(input_bytes)
+    }
+}
+
 impl SourceBLEConfig {
     pub fn example_config()->SourceBLEConfig {
         return SourceBLEConfig {
@@ -301,7 +324,30 @@ impl BleManager {
         log::trace!("Done");
     }
 
-    pub async fn connect(&mut self, ctrl_channel : crossbeam_channel::Receiver<()>, address_to_find: BDAddr) {
+    pub async fn connect_and_print_characteristics(&mut self, ctrl_channel : crossbeam_channel::Receiver<()>, address_to_find: BDAddr) {
+
+        let peripheral = match self.connect( ctrl_channel, address_to_find ).await {
+            None => {
+                println!("Unable to find device");
+                return;
+            }
+            Some(p) => p
+        };
+        
+        println!("Connected to:");
+        self.print_peripheral(&peripheral);      
+
+        println!("Characteristics:");
+        let characteristics = peripheral.discover_characteristics().unwrap();
+        for characteristic in characteristics.iter() {
+            //let ch : &Characteristic = characteristic;
+            self.print_characteristic(characteristic, Some(&peripheral) );
+        }
+
+    }
+
+
+    pub async fn connect(&mut self, ctrl_channel : crossbeam_channel::Receiver<()>, address_to_find: BDAddr) -> Option<PeripheralImp> {
 
         log::trace!("Looking for device {} ...", address_to_find.to_string());
 
@@ -322,7 +368,7 @@ impl BleManager {
                         CentralEvent::DeviceDiscovered(address) => {
                             if match_filter(address_to_find, &address ) {
                                 println!("******* Found {:0}, waiting before connecting!", address);
-                                async_std::task::sleep(Duration::from_secs(1)).await;
+                                async_std::task::sleep(Duration::from_secs(2)).await;
                                 let peripheral = self.adapter.peripheral(address).unwrap();
 
                                 println!("******* Connecting to {} !", address);
@@ -337,20 +383,12 @@ impl BleManager {
                             if match_filter(address_to_find, &address ) {
                                 println!("******* Connected to {:0}, fetching characteristics", address);
                                 let peripheral : PeripheralImp = self.adapter.peripheral(address).unwrap();
-                                let characteristics = peripheral.discover_characteristics().unwrap();
-                                println!("  Characteristics Raw: {:?}",&characteristics);
-                                println!("  Char length : {:?}",characteristics.len());
-                                for characteristic in characteristics.iter() {
-                                    //let ch : &Characteristic = characteristic;
-                                    self.print_characteristic(characteristic, Some(&peripheral) );
-                                }
+                                return Some(peripheral);
                             }
                         },
                         CentralEvent::DeviceUpdated(address) => {
                             if match_filter(address_to_find, &address ) {
                                 println!("******* Updated {:0}", address);
-                                
-                                //peripheral.connect().unwrap();
                             }
                         },
                         _ => ()
@@ -360,28 +398,24 @@ impl BleManager {
         }
 
         self.list( address_to_find );
+        return None;
 
     }
 
-    pub fn print_characteristic(&self, characteristic : &Characteristic, optional_peripheral : Option<&PeripheralImp> ) {
-        let characterisic_name = self.bluetooth_db.get_characteristic_name(characteristic.uuid);
 
-        println!("  Characteristic : {} ({}) {:?}", characteristic.uuid, characterisic_name, characteristic.properties );
+
+    pub fn print_characteristic(&self, characteristic : &Characteristic, optional_peripheral : Option<&PeripheralImp> ) {
+        let name = self.bluetooth_db.get_characteristic_name(characteristic.uuid);
 
         match optional_peripheral {
             Some(peripheral) => {
                 match peripheral.read( characteristic ) {
                     Ok(bytes) => {
-                        println!("Data : {}", get_bytes_as_hex(&bytes));
-                        match std::str::from_utf8(&bytes) {
-                            Ok(str) => {
-                                println!("   String : {}",str);
-                            }
-                            Err(_) => ()
-                        }
+                        let value_formatted = format_bytes(&bytes);
+                        println!("    {} = {}", name, value_formatted);
                     }
                     Err(e) => {
-                        println!("   Unable to fetch : {:?}",e);
+                        println!("    {} : Error:{:?}", name,e);
                     }
                 }
             }
