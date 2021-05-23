@@ -42,12 +42,10 @@ impl BluetoothDB {
         return json.into_iter().map( |x| (x.code, x.name)).collect();
     }
 
-
     fn parse_uuid( string : &str) -> Uuid {
         if string.len() == 4 {
             let d1 = u32::from_str_radix(string, 16).unwrap();
-            let ret = Uuid::from_fields( d1,BTLT_UUID_D2,BTLT_UUID_D3,&BTLT_UUID_D4).unwrap();
-            return ret;
+            return Uuid::from_fields( d1,BTLT_UUID_D2,BTLT_UUID_D3,&BTLT_UUID_D4).unwrap();
         } else if string.len() == 36  {
             return Uuid::parse_str( string ).unwrap();
         } else {
@@ -102,6 +100,19 @@ impl BluetoothDB {
 
             }
         }
-    }        
+    }  
 
+}
+
+
+#[test]
+#[should_panic]
+fn parse_error() {
+    BluetoothDB::parse_uuid("jibberish");
+}      
+
+#[test]
+fn test_parse_len_4() {
+    let uuid = BluetoothDB::parse_uuid("1234");
+    assert_eq!(uuid, Uuid::parse_str("00001234-0000-1000-8000-00805f9b34fb").unwrap());
 }
